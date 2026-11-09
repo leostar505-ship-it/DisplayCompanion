@@ -84,6 +84,7 @@ class SimBoard:
             self.swap_rb = bool(p[0]) if p else self.swap_rb
         elif cmd == P.CMD_PRESENT:
             self.present()
+            self.replies += b"K\n"
 
     @staticmethod
     def _records(p, head, size, fmt):

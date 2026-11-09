@@ -1,4 +1,5 @@
 import contextlib
+import time
 
 import numpy as np
 from PIL import Image
@@ -39,6 +40,8 @@ class Display:
         self.silent_depth = 0
         self._pending = bytearray()
         self.version = 0
+        self.inflight = None
+        self.timed_out = False
 
     @property
     def canvas(self):
@@ -65,13 +68,33 @@ class Display:
         if self.link is not None and self.link.is_open:
             self.link.send(data)
 
-    def flush(self, realtime=False):
+    def ready(self):
+        if self.inflight is None:
+            return True
+        if time.perf_counter() - self.inflight > 0.4:
+            self.inflight = None
+            self.timed_out = True
+            return True
+        return False
+
+    def ack(self):
+        self.inflight = None
+
+    def take_timeout(self):
+        t = self.timed_out
+        self.timed_out = False
+        return t
+
+    def flush(self, realtime=False, acked=False):
         if not self._pending:
             return
         data = bytes(self._pending) + P.present()
         self._pending.clear()
         if self.link is not None and self.link.is_open:
-            if realtime:
+            if acked:
+                self.inflight = time.perf_counter()
+                self.link.send(data)
+            elif realtime:
                 self.link.send_latest(data)
             else:
                 self.link.send(data)

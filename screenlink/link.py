@@ -86,7 +86,14 @@ class SerialLink(Link):
     def open(self):
         try:
             import serial
-            self.ser = serial.Serial(self.port, self.baud, timeout=0.05, write_timeout=1.0)
+            self.ser = serial.Serial()
+            self.ser.port = self.port
+            self.ser.baudrate = self.baud
+            self.ser.timeout = 0.05
+            self.ser.write_timeout = 2.0
+            self.ser.dtr = False
+            self.ser.rts = False
+            self.ser.open()
         except Exception as exc:
             self.error = str(exc)
             self.is_open = False

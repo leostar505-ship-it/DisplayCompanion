@@ -223,6 +223,9 @@ class App:
             except queue.Empty:
                 return
             if kind == "reply":
+                if text == "K":
+                    self.display.ack()
+                    continue
                 for mode in self.modes:
                     mode.on_reply(text)
                 if text.startswith(P.HELLO_REPLY_PREFIX):

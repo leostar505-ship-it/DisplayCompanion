@@ -56,6 +56,7 @@ class VisualiserMode(Mode):
         self.frames = 0
         self.demo = False
         self.shown = None
+        self.prev = None
 
     def build(self, parent):
         f = ttk.Frame(parent)
@@ -202,12 +203,29 @@ class VisualiserMode(Mode):
     def activate(self):
         self._start_source()
         self.accum = 0.0
+        self.prev = None
         self.last = time.perf_counter()
         self.display.clear((0, 0, 0))
         self.display.flush()
 
     def deactivate(self):
         self._stop_source()
+
+    def _send(self, px):
+        prev = self.prev
+        self.prev = px.copy()
+        if prev is None:
+            box = (0, 0, W, H)
+        else:
+            changed = np.any(px != prev, axis=2)
+            if not changed.any():
+                return
+            ys = np.where(changed.any(axis=1))[0]
+            xs = np.where(changed.any(axis=0))[0]
+            box = (int(xs[0]), int(ys[0]), int(xs[-1]) + 1, int(ys[-1]) + 1)
+        x0, y0, x1, y1 = box
+        self.display.image(x0, y0, Image.fromarray(px[y0:y1, x0:x1], "RGB"))
+        self.display.flush(acked=True)
 
     def _smooth_bars(self, step):
         s = self.bar_smooth.get()
@@ -238,6 +256,8 @@ class VisualiserMode(Mode):
         if self.source is None:
             return
         self.accum += dt
+        if not self.display.ready():
+            return
         if self.accum < 1.0 / float(self.fps_var.get()):
             return
         step = min(0.1, max(0.001, self.accum))
@@ -247,9 +267,10 @@ class VisualiserMode(Mode):
         self.analyser.update(self.source.latest(), step, now)
         self._smooth_bars(step)
         prims = self.visual.frame(W, H, step, self.analyser, self.look, True)
-        px = self.raster.render(prims)
-        self.display.full_image(Image.fromarray(np.ascontiguousarray(px), "RGB"))
-        self.display.flush(realtime=True)
+        px = np.ascontiguousarray(self.raster.render(prims))
+        if self.display.take_timeout():
+            self.prev = None
+        self._send(px)
         self.frames += 1
         if self.frames % 20 == 1:
             self._refresh_status()

@@ -266,8 +266,8 @@ static void execute(uint8_t cmd, const uint8_t *p, uint16_t n) {
       dirty = true;
       break;
     case CMD_PRESENT:
-      if (Serial.available() > 0 && millis() - lastPresentMs < 30) dirty = true;
-      else present();
+      present();
+      Serial.print("K\n");
       break;
     default:
       break;
@@ -359,7 +359,7 @@ static void splash() {
 }
 
 void setup() {
-  Serial.setRxBufferSize(16384);
+  Serial.setRxBufferSize(32768);
   Serial.begin(115200);
   SPI.begin(PIN_SCK, -1, PIN_MOSI, PIN_CS);
 #if PANEL_VARIANT == 2
