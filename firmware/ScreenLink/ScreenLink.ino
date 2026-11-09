@@ -1,4 +1,4 @@
-// Display Companion firmware 1.5.0
+// Display Companion firmware 1.5.1
 #include <Arduino.h>
 #include <SPI.h>
 #include <Adafruit_GFX.h>
@@ -14,7 +14,7 @@
 #define BASE_ROTATION 1
 #define FLIPPED_ROTATION 3
 #endif
-#define FW_VERSION "1.5.0"
+#define FW_VERSION "1.5.1"
 #define SPI_HZ 40000000UL
 
 #if PANEL_VARIANT == 2
@@ -505,6 +505,9 @@ static void splash() {
   canvas.setTextColor(0x07FF);
   canvas.setCursor(36, H / 2 + 8);
   canvas.print("waiting for app");
+  canvas.setTextColor(0x8410);
+  canvas.setCursor(56, H / 2 + 24);
+  canvas.print("fw " FW_VERSION);
   markAll();
   enqueueFrame(false);
   serviceDraw();
