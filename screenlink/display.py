@@ -44,6 +44,8 @@ class Display:
         self.inflight = collections.deque()
         self.timed_out = False
         self._region_prev = None
+        self._stale = []
+        self._calls = 0
 
     WINDOW = 2  # frames the board may hold at once (one drawing, one waiting)
 
@@ -152,12 +154,30 @@ class Display:
         img = img.crop((0, 0, w, h))
         self._add(P.image(x, y, w, h, image_to_565(img).tobytes()))
 
+    SWEEP_PER_FRAME = 3
+    REFRESH_EVERY = 3
+
     def regions(self, px565):
-        """Send only what changed since the last call, as small rectangles or image blocks."""
-        from .regions import encode
-        prev = self._region_prev
-        self._region_prev = px565.copy()
-        rects, images = encode(prev, px565)
+        """Send what changed since the last call. Stale strips are resent whole, a few per frame."""
+        from .regions import encode, strip_count, STRIP
+        n = strip_count(px565.shape[1])
+        if self._region_prev is None or self._region_prev.shape != px565.shape:
+            self._region_prev = np.zeros_like(px565)
+            self._stale = list(range(n))
+        self._calls += 1
+        if self._calls % self.REFRESH_EVERY == 0:
+            rr = (self._calls // self.REFRESH_EVERY) % n
+            if rr not in self._stale:
+                self._stale.append(rr)
+        now = self._stale[:self.SWEEP_PER_FRAME]
+        later = set(self._stale[self.SWEEP_PER_FRAME:])
+        self._stale = self._stale[self.SWEEP_PER_FRAME:]
+        rects, images = encode(self._region_prev, px565, force=set(now), skip=later)
+        prev = self._region_prev.copy()
+        for si in range(n):
+            if si not in later:
+                prev[:, si * STRIP:(si + 1) * STRIP] = px565[:, si * STRIP:(si + 1) * STRIP]
+        self._region_prev = prev
         if rects:
             self._add(P.rects(rects))
         for x, y, w, h, data in images:
@@ -166,6 +186,8 @@ class Display:
 
     def reset_regions(self):
         self._region_prev = None
+        self._stale = []
+        self._calls = 0
 
     def full_image(self, img):
         self.image(0, 0, img)

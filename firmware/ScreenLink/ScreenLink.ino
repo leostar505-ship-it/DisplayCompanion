@@ -57,7 +57,7 @@ static const uint8_t CMD_PRESENT = 0x0C;
 
 #if PANEL_VARIANT == 2
 Adafruit_ST7789 tft(&SPI, PIN_CS, PIN_DC, PIN_RST);
-static uint16_t rowbuf[W * 2];
+static uint16_t rowbuf[W * 4];
 #else
 Adafruit_ST7735 tft(&SPI, PIN_CS, PIN_DC, PIN_RST);
 #endif
@@ -77,6 +77,7 @@ struct Frame {
   uint8_t quarter;
   bool swap;
   bool ack;
+  int16_t x0, y0, x1, y1;
 };
 static Frame frames[2];
 static volatile int drawingIdx = -1;
@@ -110,6 +111,21 @@ static unsigned long lastErrMs = 0;
 static bool dirty = false;
 static bool swapRB = false;
 static uint8_t quarter = 0;
+static int16_t dx0 = W, dy0 = H, dx1 = 0, dy1 = 0;
+
+static void markDirty(int x, int y, int w, int h) {
+  int x1 = x + w, y1 = y + h;
+  if (x < 0) x = 0;
+  if (y < 0) y = 0;
+  if (x1 > W) x1 = W;
+  if (y1 > H) y1 = H;
+  if (x1 <= x || y1 <= y) return;
+  if (x < dx0) dx0 = x;
+  if (y < dy0) dy0 = y;
+  if (x1 > dx1) dx1 = x1;
+  if (y1 > dy1) dy1 = y1;
+}
+static void markAll() { markDirty(0, 0, W, H); }
 
 static inline uint16_t rd16(const uint8_t *p) {
   return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
@@ -122,35 +138,44 @@ static void drawFrame(const Frame &f) {
   const bool sw = f.swap;
   const uint8_t qt = f.quarter;
 #if PANEL_VARIANT == 2
+  if (f.x1 <= f.x0 || f.y1 <= f.y0) return;
   tft.startWrite();
   if (qt & 1) {
-    tft.setAddrWindow((240 - H * 2) / 2, 0, H * 2, W * 2);
-    for (int j = 0; j < W; j++) {
-      for (int i = 0; i < H; i++) {
+    int i0, i1, j0, j1;
+    if (qt == 1) {
+      i0 = H - f.y1; i1 = H - f.y0; j0 = f.x0; j1 = f.x1;
+    } else {
+      i0 = f.y0; i1 = f.y1; j0 = W - f.x1; j1 = W - f.x0;
+    }
+    const int n = (i1 - i0) * 2;
+    tft.setAddrWindow((240 - H * 2) / 2 + i0 * 2, j0 * 2, n, (j1 - j0) * 2);
+    for (int j = j0; j < j1; j++) {
+      for (int i = i0; i < i1; i++) {
         int y = (qt == 1) ? (H - 1 - i) : i;
         int x = (qt == 1) ? j : (W - 1 - j);
         uint16_t v = src[y * W + x];
         if (sw) v = (uint16_t)(((v & 0x1F) << 11) | (v & 0x07E0) | (v >> 11));
-        rowbuf[2 * i] = v;
-        rowbuf[2 * i + 1] = v;
+        rowbuf[2 * (i - i0)] = v;
+        rowbuf[2 * (i - i0) + 1] = v;
       }
-      tft.writePixels(rowbuf, H * 2);
-      tft.writePixels(rowbuf, H * 2);
+      memcpy(rowbuf + n, rowbuf, n * 2);
+      tft.writePixels(rowbuf, n * 2);
     }
     tft.endWrite();
     return;
   }
-  tft.setAddrWindow(0, (240 - H * 2) / 2, W * 2, H * 2);
-  for (int y = 0; y < H; y++) {
+  const int n = (f.x1 - f.x0) * 2;
+  tft.setAddrWindow(f.x0 * 2, (240 - H * 2) / 2 + f.y0 * 2, n, (f.y1 - f.y0) * 2);
+  for (int y = f.y0; y < f.y1; y++) {
     const uint16_t *row = src + y * W;
-    for (int x = 0; x < W; x++) {
+    for (int x = f.x0; x < f.x1; x++) {
       uint16_t v = row[x];
       if (sw) v = (uint16_t)(((v & 0x1F) << 11) | (v & 0x07E0) | (v >> 11));
-      rowbuf[2 * x] = v;
-      rowbuf[2 * x + 1] = v;
+      rowbuf[2 * (x - f.x0)] = v;
+      rowbuf[2 * (x - f.x0) + 1] = v;
     }
-    tft.writePixels(rowbuf, W * 2);
-    tft.writePixels(rowbuf, W * 2);
+    memcpy(rowbuf + n, rowbuf, n * 2);
+    tft.writePixels(rowbuf, n * 2);
   }
   tft.endWrite();
 #else
@@ -170,9 +195,20 @@ static void drawFrame(const Frame &f) {
 static void enqueueFrame(bool ack) {
   Q_TAKE();
   int idx;
+  int16_t bx0 = dx0, by0 = dy0, bx1 = dx1, by1 = dy1;
   if (pendingIdx >= 0) {
     idx = pendingIdx;
-    if (frames[idx].ack) ackOwed = ackOwed + 1;  // dropped frame: still acknowledge it
+    if (frames[idx].ack) ackOwed = ackOwed + 1;
+    if (frames[idx].x1 > frames[idx].x0 && frames[idx].y1 > frames[idx].y0) {
+      if (bx1 <= bx0 || by1 <= by0) {
+        bx0 = frames[idx].x0; by0 = frames[idx].y0; bx1 = frames[idx].x1; by1 = frames[idx].y1;
+      } else {
+        if (frames[idx].x0 < bx0) bx0 = frames[idx].x0;
+        if (frames[idx].y0 < by0) by0 = frames[idx].y0;
+        if (frames[idx].x1 > bx1) bx1 = frames[idx].x1;
+        if (frames[idx].y1 > by1) by1 = frames[idx].y1;
+      }
+    }
   } else {
     idx = (drawingIdx == 0) ? 1 : 0;
   }
@@ -180,6 +216,8 @@ static void enqueueFrame(bool ack) {
   frames[idx].quarter = quarter;
   frames[idx].swap = swapRB;
   frames[idx].ack = ack;
+  frames[idx].x0 = bx0; frames[idx].y0 = by0; frames[idx].x1 = bx1; frames[idx].y1 = by1;
+  dx0 = W; dy0 = H; dx1 = 0; dy1 = 0;
   pendingIdx = idx;
   dirty = false;
   lastPresentMs = millis();
@@ -240,6 +278,7 @@ static void reportError(const char *msg) {
 static void doClear(const uint8_t *p, uint16_t n) {
   if (n < 2) return;
   canvas.fillScreen(rd16(p));
+  markAll();
   dirty = true;
 }
 
@@ -250,6 +289,7 @@ static void doRects(const uint8_t *p, uint16_t n) {
   for (uint8_t i = 0; i < count; i++) {
     const uint8_t *r = p + 1 + i * 6;
     canvas.fillRect(r[0], r[1], r[2], r[3], rd16(r + 4));
+    markDirty(r[0], r[1], r[2], r[3]);
   }
   dirty = true;
 }
@@ -261,6 +301,9 @@ static void doLines(const uint8_t *p, uint16_t n) {
   for (uint8_t i = 0; i < count; i++) {
     const uint8_t *r = p + 1 + i * 6;
     canvas.drawLine(r[0], r[1], r[2], r[3], rd16(r + 4));
+    int lx = r[0] < r[2] ? r[0] : r[2], ly = r[1] < r[3] ? r[1] : r[3];
+    int lw = (r[0] < r[2] ? r[2] - r[0] : r[0] - r[2]) + 1, lh = (r[1] < r[3] ? r[3] - r[1] : r[1] - r[3]) + 1;
+    markDirty(lx, ly, lw, lh);
   }
   dirty = true;
 }
@@ -272,6 +315,7 @@ static void doPixels(const uint8_t *p, uint16_t n) {
   for (uint16_t i = 0; i < count; i++) {
     const uint8_t *r = p + 2 + i * 4;
     canvas.drawPixel(r[0], r[1], rd16(r + 2));
+    markDirty(r[0], r[1], 1, 1);
   }
   dirty = true;
 }
@@ -290,6 +334,7 @@ static void doImage(const uint8_t *p, uint16_t n) {
       src += 2;
     }
   }
+  markDirty(x, y, w, h);
   dirty = true;
 }
 
@@ -311,6 +356,7 @@ static void doText(const uint8_t *p, uint16_t n) {
   else canvas.setTextColor(fg);
   canvas.setCursor(x, y);
   canvas.print(tmp);
+  markDirty(x, y, len * 6 * size, 8 * size);
   dirty = true;
 }
 
@@ -339,6 +385,7 @@ static void execute(uint8_t cmd, const uint8_t *p, uint16_t n) {
       break;
     case CMD_FLIP:
       if (n >= 1) applyRotation(p[0] & 3);
+      markAll();
       dirty = true;
       break;
     case CMD_INVERT:
@@ -352,6 +399,7 @@ static void execute(uint8_t cmd, const uint8_t *p, uint16_t n) {
       break;
     case CMD_SWAP_RB:
       if (n >= 1) swapRB = p[0] != 0;
+      markAll();
       dirty = true;
       break;
     case CMD_PRESENT:
@@ -445,6 +493,7 @@ static void splash() {
   canvas.setTextColor(0x07FF);
   canvas.setCursor(36, H / 2 + 8);
   canvas.print("waiting for app");
+  markAll();
   enqueueFrame(false);
   serviceDraw();
 }

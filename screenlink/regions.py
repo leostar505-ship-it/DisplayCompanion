@@ -38,10 +38,15 @@ def _rects(a, ox, oy):
     return out
 
 
-def encode(prev, new):
+def strip_count(width):
+    return (width + STRIP - 1) // STRIP
+
+
+def encode(prev, new, force=(), skip=()):
     """Return (rects, images) that bring a screen showing `prev` to `new`.
 
     prev is None (or a different shape) for "unknown": everything is sent.
+    Strips listed in `force` are sent whole; strips in `skip` are left alone.
     rects: [(x, y, w, h, rgb565)], images: [(x, y, w, h, bytes)].
     """
     h, w = new.shape
@@ -51,8 +56,12 @@ def encode(prev, new):
         changed = prev != new
     rects = []
     images = []
-    for x0 in range(0, w, STRIP):
+    for si, x0 in enumerate(range(0, w, STRIP)):
+        if si in skip:
+            continue
         x1 = min(w, x0 + STRIP)
+        if si in force:
+            changed[:, x0:x1] = True
         rows = np.flatnonzero(changed[:, x0:x1].any(axis=1))
         if rows.size == 0:
             continue

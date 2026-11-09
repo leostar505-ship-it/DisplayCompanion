@@ -35,6 +35,8 @@ class App:
         self.replies = queue.Queue()
         self.last_tick = time.perf_counter()
         self.last_status = 0.0
+        self.acks = 0
+        self.ack_mark = (time.perf_counter(), 0)
         self.preview_version = -1
         self.current = None
         self.photo = None
@@ -225,7 +227,10 @@ class App:
             if kind == "reply":
                 if text == "K":
                     self.display.ack()
+                    self.acks += 1
                     continue
+                if text.startswith("ERR"):
+                    self.display.reset_regions()
                 for mode in self.modes:
                     mode.on_reply(text)
                 if text.startswith(P.HELLO_REPLY_PREFIX):
@@ -251,8 +256,11 @@ class App:
         self.last_status = now
         if self.link is not None:
             sent = self.link.bytes_sent
-            text = "%s   |   sent %.1f KB   |   mode: %s" % (self.status_text.split("   |")[0], sent / 1024.0,
-                                                          self.current.name)
+            t0, a0 = self.ack_mark
+            fps = (self.acks - a0) / max(0.001, now - t0)
+            self.ack_mark = (now, self.acks)
+            text = "%s   |   sent %.1f KB   |   %.0f fps   |   mode: %s" % (self.status_text.split("   |")[0], sent / 1024.0,
+                                                                          fps, self.current.name)
             self.status.configure(text=text)
 
     def tick(self, dt=None):

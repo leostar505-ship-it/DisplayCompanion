@@ -69,3 +69,40 @@ def test_ack_window_allows_two_frames_in_flight():
     assert not d.ready()
     d.ack()
     assert d.ready()
+
+
+def test_lost_frames_are_healed_by_the_rolling_refresh():
+    rng = np.random.default_rng(11)
+    d = Display()
+    lossy = SimBoard()
+    lossy.feed(P.clear(0x1234))
+    target = scene(rng)
+    for i in range(40):
+        if i % 4 == 0:
+            target = scene(rng)
+        d.regions(target)
+        data = bytes(d._pending)
+        d._pending.clear()
+        if i % 3 != 1:
+            lossy.feed(data)
+    for _ in range(60):
+        d.regions(target)
+        lossy.feed(bytes(d._pending))
+        d._pending.clear()
+    assert np.array_equal(lossy.canvas.buf.astype("<u2"), target)
+
+
+def test_first_frame_is_spread_over_several_calls():
+    d = Display()
+    lossy = SimBoard()
+    lossy.feed(P.clear(0x5555))
+    target = scene(np.random.default_rng(2), flat=False)
+    sizes = []
+    for _ in range(6):
+        d.regions(target)
+        data = bytes(d._pending)
+        sizes.append(len(data))
+        d._pending.clear()
+        lossy.feed(data)
+    assert max(sizes) < 16000
+    assert np.array_equal(lossy.canvas.buf.astype("<u2"), target)
