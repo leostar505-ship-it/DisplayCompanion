@@ -1,4 +1,4 @@
-// Display Companion firmware 1.5.3
+// Display Companion firmware 1.5.4
 #include <Arduino.h>
 #include <SPI.h>
 #include <Adafruit_GFX.h>
@@ -14,8 +14,8 @@
 #define BASE_ROTATION 1
 #define FLIPPED_ROTATION 3
 #endif
-#define FW_VERSION "1.5.3"
-#define SPI_HZ 40000000UL
+#define FW_VERSION "1.5.4"
+#define SPI_HZ 80000000UL
 
 #if PANEL_VARIANT == 2
 #include <Adafruit_ST7789.h>
