@@ -65,11 +65,40 @@ def text_size(draw, text, font, spacing=2):
     return box
 
 
-def render_block(text, font, fg, bg, align="center", valign="middle", margin=2, spacing=2):
+def layout(text, font, margin=2, spacing=2):
+    probe = ImageDraw.Draw(Image.new("RGB", (4, 4)))
+    lines = wrap_text(text, font, WIDTH - margin * 2)
+    one = probe.textbbox((0, 0), "Ag", font=font)
+    single = one[3] - one[1]
+    two = probe.multiline_textbbox((0, 0), "Ag\nAg", font=font, spacing=spacing)
+    pitch = max(1, (two[3] - two[1]) - single)
+    avail = HEIGHT - margin * 2
+    rows = 0 if avail < single else 1 + (avail - single) // pitch
+    return lines, rows
+
+
+def fitting_prefix(text, font, margin=2, spacing=2):
+    lines, rows = layout(text, font, margin, spacing)
+    if len(lines) <= rows:
+        return len(text)
+    lo, hi = 0, len(text)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        got, _ = layout(text[:mid], font, margin, spacing)
+        if len(got) <= rows:
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo
+
+
+def render_block(text, font, fg, bg, align="center", valign="middle", margin=2, spacing=2, wrap=True):
     img = Image.new("RGB", (WIDTH, HEIGHT), bg)
     draw = ImageDraw.Draw(img)
     if not text:
         return img
+    if wrap:
+        text = "\n".join(layout(text, font, margin, spacing)[0])
     box = text_size(draw, text, font, spacing)
     tw = box[2] - box[0]
     th = box[3] - box[1]
@@ -100,12 +129,12 @@ def render_strip(text, font, fg, bg, pad=WIDTH):
 
 
 def fit_size(text, path, lo=6, hi=72, margin=4):
-    probe = ImageDraw.Draw(Image.new("RGB", (4, 4)))
     best = lo
     for size in range(lo, hi + 1):
         font = load_font(path, size)
-        box = text_size(probe, text, font)
-        if box[2] - box[0] <= WIDTH - margin * 2 and box[3] - box[1] <= HEIGHT - margin * 2:
+        lines, rows = layout(text, font, margin // 2)
+        widest = max([ImageDraw.Draw(Image.new("RGB", (4, 4))).textlength(l, font=font) for l in lines] or [0])
+        if len(lines) <= rows and widest <= WIDTH - margin:
             best = size
         else:
             break

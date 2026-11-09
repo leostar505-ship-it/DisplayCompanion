@@ -42,6 +42,9 @@ class TextMode(Mode):
         self.box.pack(anchor="w", pady=4)
         self.box.insert("1.0", "Hello Leo!")
         self.box.bind("<KeyRelease>", lambda e: self._mark())
+        self.box.tag_configure("over", foreground="#ff5566")
+        self.info = ttk.Label(left, text="", style="Muted.TLabel", wraplength=300, justify="left")
+        self.info.pack(anchor="w")
 
         mid = ttk.Frame(f)
         mid.grid(row=0, column=1, sticky="n", padx=(0, 24))
@@ -90,6 +93,25 @@ class TextMode(Mode):
     def _mark(self, *_):
         self.dirty = True
         self.quiet = 0.0
+        self._check()
+
+    def _check(self):
+        if not hasattr(self, "info"):
+            return
+        text = self._text()
+        self.box.tag_remove("over", "1.0", "end")
+        if self.scroll_var.get():
+            self.info.config(text="%d characters. Scrolling has no limit." % len(text))
+            return
+        font = self._font(text)
+        lines, rows = fonts.layout(text, font)
+        if len(lines) <= rows:
+            self.info.config(text="%d characters, %d of %d lines used. Fits." % (len(text), len(lines), rows))
+            return
+        keep = fonts.fitting_prefix(text, font)
+        self.box.tag_add("over", "1.0+%dc" % keep, "end-1c")
+        self.info.config(text="Too long: %d lines but only %d fit. Red text is cut off (about %d characters fit)." % (
+            len(lines), rows, keep))
 
     def activate(self):
         self._mark()
