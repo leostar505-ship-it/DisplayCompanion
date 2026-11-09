@@ -195,3 +195,32 @@ def test_bars_hold_time_keeps_peaks_up():
     for _ in range(30):
         vis.frame(160, 120, 0.03, an, look, True)
     assert vis.peaks[0] < top
+
+
+def test_bar_smoothness_slows_the_fall_between_loud_and_quiet():
+    import numpy as np
+    from screenlink.modes.visualiser import VisualiserMode
+
+    class Stub:
+        def get(self_inner):
+            return self_inner.v
+
+    mode = VisualiserMode.__new__(VisualiserMode)
+    from screenlink.audiovis.analysis import Analyser
+
+    mode.analyser = Analyser()
+    mode.shown = None
+    mode.bar_smooth = Stub()
+    mode.bar_smooth.v = 0.0
+    mode.analyser.vals = np.ones(32)
+    mode._smooth_bars(0.05)
+    mode.analyser.vals = np.zeros(32)
+    mode._smooth_bars(0.05)
+    assert mode.analyser.vals.max() == 0.0
+    mode.bar_smooth.v = 0.8
+    mode.analyser.vals = np.ones(32)
+    for _ in range(10):
+        mode._smooth_bars(0.05)
+    mode.analyser.vals = np.zeros(32)
+    mode._smooth_bars(0.05)
+    assert 0.5 < mode.analyser.vals.max() < 1.0

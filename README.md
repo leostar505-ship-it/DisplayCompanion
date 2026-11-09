@@ -6,7 +6,7 @@ Modes (pick from the menu on the left):
 
 | Mode | What it does |
 |---|---|
-| Visualiser | The audio visualiser project (v0.4.8) running as is, drawn at the screen size: radial spectrum + bass ring + waveform (default), radial spectrum + bass ring, waveform only, mirrored peak-hold bars. Colour: rainbow, loudness gradient (pink to red) or custom. Sensitivity, line smoothness, ring size, detection, normalise, kick/bass trigger, audio device picker. Bars also get a peak hold time (0 = the original behaviour). |
+| Visualiser | The audio visualiser project (v0.4.8) running as is, drawn at the screen size: radial spectrum + bass ring + waveform (default), radial spectrum + bass ring, waveform only, mirrored peak-hold bars. Colour: rainbow, loudness gradient (pink to red) or custom. Sensitivity, bar smoothness (evens out loud-quiet-loud-quiet and low frame rates), line smoothness, ring size, detection, normalise, kick/bass trigger, audio device picker. Bars also get a peak hold time (0 = the original behaviour). |
 | Draw | Pen, eraser, line, rectangle, ellipse (outline or filled), flood fill, colour picker, brush size, undo/redo, save as PNG. Shapes preview while you drag. |
 | Text | Any text, any font on your PC, any size or auto-fit, alignment, colours, sideways scrolling. |
 | Image | Any picture or animated GIF, scaled to fit, fill or stretch, with brightness and contrast. |

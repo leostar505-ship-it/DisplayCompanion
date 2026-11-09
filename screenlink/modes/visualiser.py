@@ -55,6 +55,7 @@ class VisualiserMode(Mode):
         self.device_values = []
         self.frames = 0
         self.demo = False
+        self.shown = None
 
     def build(self, parent):
         f = ttk.Frame(parent)
@@ -110,6 +111,8 @@ class VisualiserMode(Mode):
         self.sens.pack(anchor="w", pady=2)
         self.smooth = Slider(mid, "Line smoothness", 0.0, 1.0, 0.5, command=self._on_smooth)
         self.smooth.pack(anchor="w", pady=2)
+        self.bar_smooth = Slider(mid, "Bar smoothness", 0.0, 1.0, 0.35)
+        self.bar_smooth.pack(anchor="w", pady=2)
         self.ring = Slider(mid, "Ring size", 0.5, 8.0, 1.6, command=self._on_ring)
         self.ring.pack(anchor="w", pady=2)
         self.detect = Slider(mid, "Detection", 0.25, 8.0, 1.6, command=self._on_detect)
@@ -206,6 +209,18 @@ class VisualiserMode(Mode):
     def deactivate(self):
         self._stop_source()
 
+    def _smooth_bars(self, step):
+        s = self.bar_smooth.get()
+        vals = np.asarray(self.analyser.vals, dtype=np.float64)
+        if self.shown is None or len(self.shown) != len(vals) or s <= 0.001:
+            self.shown = vals.copy()
+            return
+        attack = 1.0 - np.exp(-step / max(1e-4, s * 0.06))
+        release = 1.0 - np.exp(-step / (0.02 + s * 0.4))
+        rising = vals > self.shown
+        self.shown = self.shown + (vals - self.shown) * np.where(rising, attack, release)
+        self.analyser.vals = self.shown.copy()
+
     def _refresh_status(self):
         src = self.source
         if src is None or isinstance(src, DemoSource):
@@ -230,6 +245,7 @@ class VisualiserMode(Mode):
         now = time.perf_counter()
         self.analyser.set_rate(self.source.rate)
         self.analyser.update(self.source.latest(), step, now)
+        self._smooth_bars(step)
         prims = self.visual.frame(W, H, step, self.analyser, self.look, True)
         px = self.raster.render(prims)
         self.display.full_image(Image.fromarray(np.ascontiguousarray(px), "RGB"))
