@@ -1,3 +1,4 @@
+// Display Companion firmware 1.5.0
 #include <Arduino.h>
 #include <SPI.h>
 #include <Adafruit_GFX.h>
