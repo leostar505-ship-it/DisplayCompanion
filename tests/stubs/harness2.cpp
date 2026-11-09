@@ -28,6 +28,7 @@ int main(int argc, char **argv) {
     loop();
     g_ms += 1;
   }
+  if (argc > 4) g_ms += (unsigned long)atol(argv[4]);
   for (int k = 0; k < 20; k++) {
     g_ms += 5;
     loop();

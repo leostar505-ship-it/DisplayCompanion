@@ -224,3 +224,30 @@ def test_bar_smoothness_slows_the_fall_between_loud_and_quiet():
     mode.analyser.vals = np.zeros(32)
     mode._smooth_bars(0.05)
     assert 0.5 < mode.analyser.vals.max() < 1.0
+
+
+def frame_sizes(raw):
+    sizes = []
+    i = 0
+    while i < len(raw):
+        assert raw[i:i + 2] == bytes((0xA5, 0x5A))
+        n = raw[i + 3] | (raw[i + 4] << 8)
+        sizes.append(n)
+        i += 5 + n + 1
+    return sizes
+
+
+def test_images_are_split_into_small_commands():
+    from PIL import Image
+    import numpy as np
+    from screenlink.display import Display
+    rng = np.random.default_rng(4)
+    img = Image.fromarray(rng.integers(0, 256, (120, 160, 3), dtype=np.uint8), "RGB")
+    d = Display()
+    d.image(0, 0, img)
+    sizes = frame_sizes(bytes(d._pending))
+    assert len(sizes) >= 6
+    assert max(sizes) < 6500
+    d2 = Display()
+    d2.send_full()
+    assert max(frame_sizes(bytes(d2._pending))) < 6500

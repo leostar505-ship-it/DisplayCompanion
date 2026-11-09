@@ -111,3 +111,15 @@ def test_open_failure_is_reported():
     link = SerialLink("/dev/does-not-exist")
     assert not link.open()
     assert link.error
+
+
+def test_idle_link_sends_a_heartbeat(pty_pair):
+    master, name = pty_pair
+    os.set_blocking(master, False)
+    link = SerialLink(name)
+    assert link.open(), link.error
+    try:
+        got = read_available(master, len(P.heartbeat()), timeout=2.5)
+        assert got.startswith(P.heartbeat())
+    finally:
+        link.close()

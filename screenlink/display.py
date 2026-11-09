@@ -47,6 +47,7 @@ class Display:
         self._stale = []
         self._calls = 0
 
+    BAND_BYTES = 6000
     WINDOW = 2  # frames the board may hold at once (one drawing, one waiting)
 
     @property
@@ -152,7 +153,11 @@ class Display:
         if w <= 0 or h <= 0:
             return
         img = img.crop((0, 0, w, h))
-        self._add(P.image(x, y, w, h, image_to_565(img).tobytes()))
+        data = image_to_565(img)
+        rows = max(1, self.BAND_BYTES // (w * 2))
+        for r in range(0, h, rows):
+            hh = min(rows, h - r)
+            self._add(P.image(x, y + r, w, hh, data[r:r + hh].tobytes()))
 
     SWEEP_PER_FRAME = 3
     REFRESH_EVERY = 3
@@ -194,9 +199,9 @@ class Display:
 
     def send_full(self):
         buf = np.ascontiguousarray(self.canvas.buf.astype("<u2"))
-        band = 24
-        for y in range(0, H, band):
-            h = min(band, H - y)
+        rows = max(1, self.BAND_BYTES // (W * 2))
+        for y in range(0, H, rows):
+            h = min(rows, H - y)
             self._add(P.image(0, y, W, h, buf[y:y + h].tobytes()))
 
     def text(self, x, y, size, rgb, bg_rgb, opaque, string):

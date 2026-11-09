@@ -25,6 +25,14 @@ struct SerialStub {
     rx.pop_front();
     return b;
   }
+  size_t read(uint8_t *dst, size_t n) {
+    size_t i = 0;
+    while (i < n && !rx.empty()) {
+      dst[i++] = rx.front();
+      rx.pop_front();
+    }
+    return i;
+  }
   size_t readBytes(char *dst, size_t n) {
     size_t i = 0;
     while (i < n && !rx.empty()) {

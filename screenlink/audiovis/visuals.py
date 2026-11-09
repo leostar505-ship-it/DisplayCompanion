@@ -112,8 +112,6 @@ class BarsVisual:
         hold = float(getattr(look, "hold", 0.0))
         gain = height_gain(look)
         mid = height / 2.0
-        shell = max(1.0, (mid - 1.0) / BAR_SHELLS)
-        shell_rgb = [colors.wave_rgb((k + 0.5) * shell, mid * 0.5, mid) for k in range(BAR_SHELLS)]
         bw = width / BANDS
         fall = height * 0.72 * dt
         if pixel:
@@ -139,13 +137,8 @@ class BarsVisual:
             x0 = i * bw + offset
             x1 = x0 + bar_w
             if look.mode == colors.MODE_RAINBOW:
-                count = max(1, int(math.ceil(h / shell))) if h > 0 else 1
-                for k in range(min(count, BAR_SHELLS)):
-                    d0 = k * shell
-                    d1 = min((k + 1) * shell, h)
-                    rgb = shell_rgb[k]
-                    bars.append(rect(x0, mid - d1, x1, mid - d0, rgb))
-                    bars.append(rect(x0, mid + d0 + 1.0, x1, mid + d1 + 1.0, rgb))
+                rgb = colors.spectrum_rgb(i, BANDS)
+                bars.append(rect(x0, mid - h, x1, mid + h + 1.0, rgb))
             else:
                 rgb = colors.bar_rgb(look.mode, i, BANDS, an.vals[i], look.sensitivity, look.fixed)
                 bars.append(rect(x0, mid - h, x1, mid + h + 1.0, rgb))

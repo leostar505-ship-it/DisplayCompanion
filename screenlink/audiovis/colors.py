@@ -30,6 +30,10 @@ def rainbow_rgb(index, count):
     return hsl_to_rgb(index / count * 300.0, 90.0, 55.0)
 
 
+def spectrum_rgb(index, count):
+    return hsl_to_rgb(index / max(1, count - 1) * 330.0, 90.0, 55.0)
+
+
 # Rainbow tuned in the colour preview: (weight, hue) from the centre to the circle edge.
 RAINBOW_STOPS = ((1.0, 0.0), (0.8, 60.0), (0.8, 120.0), (0.8, 180.0), (1.8, 240.0), (0.6, 285.0), (0.25, 330.0))
 RAINBOW_BACK = 0.55  # share of the distance outside the circle taken to go from pink back to red

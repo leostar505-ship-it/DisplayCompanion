@@ -17,6 +17,7 @@ CMD_FLIP = 0x08
 CMD_INVERT = 0x09
 CMD_SWAP_RB = 0x0A
 CMD_PRESENT = 0x0C
+CMD_HEARTBEAT = 0x0D
 
 COMMAND_NAMES = {
     "HELLO": CMD_HELLO,
@@ -30,6 +31,7 @@ COMMAND_NAMES = {
     "INVERT": CMD_INVERT,
     "SWAP_RB": CMD_SWAP_RB,
     "PRESENT": CMD_PRESENT,
+    "HEARTBEAT": CMD_HEARTBEAT,
 }
 
 HELLO_REPLY_PREFIX = "SCREENLINK"
@@ -133,6 +135,10 @@ def swap_rb(on):
 
 def present():
     return frame(CMD_PRESENT)
+
+
+def heartbeat():
+    return frame(CMD_HEARTBEAT)
 
 
 class Decoder:

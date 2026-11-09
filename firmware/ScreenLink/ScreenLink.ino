@@ -13,6 +13,7 @@
 #define BASE_ROTATION 1
 #define FLIPPED_ROTATION 3
 #endif
+#define FW_VERSION "1.5.0"
 #define SPI_HZ 40000000UL
 
 #if PANEL_VARIANT == 2
@@ -54,6 +55,8 @@ static const uint8_t CMD_FLIP = 0x08;
 static const uint8_t CMD_INVERT = 0x09;
 static const uint8_t CMD_SWAP_RB = 0x0A;
 static const uint8_t CMD_PRESENT = 0x0C;
+static const uint8_t CMD_HEARTBEAT = 0x0D;
+static const unsigned long APP_TIMEOUT_MS = 3000;
 
 #if PANEL_VARIANT == 2
 Adafruit_ST7789 tft(&SPI, PIN_CS, PIN_DC, PIN_RST);
@@ -108,6 +111,8 @@ static uint8_t runSum = 0;
 static unsigned long lastByteMs = 0;
 static unsigned long lastPresentMs = 0;
 static unsigned long lastErrMs = 0;
+static unsigned long lastAppMs = 0;
+static bool appActive = false;
 static bool dirty = false;
 static bool swapRB = false;
 static uint8_t quarter = 0;
@@ -363,7 +368,7 @@ static void doText(const uint8_t *p, uint16_t n) {
 static void execute(uint8_t cmd, const uint8_t *p, uint16_t n) {
   switch (cmd) {
     case CMD_HELLO:
-      Serial.print("SCREENLINK 1 160x120\n");
+      Serial.print("SCREENLINK 1 160x120 fw " FW_VERSION "\n");
       break;
     case CMD_CLEAR:
       doClear(p, n);
@@ -405,6 +410,8 @@ static void execute(uint8_t cmd, const uint8_t *p, uint16_t n) {
     case CMD_PRESENT:
       enqueueFrame(true);
       break;
+    case CMD_HEARTBEAT:
+      break;
     default:
       break;
   }
@@ -417,7 +424,7 @@ static void consume() {
       size_t need = (size_t)curLen - gotLen;
       size_t take = (size_t)Serial.available();
       if (take > need) take = need;
-      size_t r = Serial.readBytes((char *)payload + gotLen, take);
+      size_t r = Serial.read(payload + gotLen, take);
       for (size_t i = 0; i < r; i++) runSum = (uint8_t)(runSum + payload[gotLen + i]);
       gotLen = (uint16_t)(gotLen + r);
       if (gotLen == curLen) state = S_CHK;
@@ -453,7 +460,11 @@ static void consume() {
         }
         break;
       case S_CHK:
-        if (b == runSum) execute(curCmd, payload, curLen);
+        if (b == runSum) {
+          appActive = true;
+          lastAppMs = millis();
+          execute(curCmd, payload, curLen);
+        }
         else reportError("chk");
         state = S_SYNC1;
         break;
@@ -527,6 +538,10 @@ void setup() {
 void loop() {
   consume();
   if (state != S_SYNC1 && millis() - lastByteMs > FRAME_TIMEOUT_MS) state = S_SYNC1;
+  if (appActive && millis() - lastAppMs > APP_TIMEOUT_MS && millis() - lastByteMs > APP_TIMEOUT_MS) {
+    appActive = false;
+    splash();
+  }
   if (dirty) {
     unsigned long now = millis();
     if (state == S_SYNC1 && (now - lastByteMs >= IDLE_PRESENT_MS || now - lastPresentMs >= 60)) enqueueFrame(false);

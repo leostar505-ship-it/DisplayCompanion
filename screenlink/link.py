@@ -1,10 +1,12 @@
 import collections
 import threading
+import time
 
 from . import protocol as P
 from .simboard import SimBoard
 
 SIMULATOR_NAME = "Simulator (no board)"
+KEEPALIVE_S = 1.0
 
 
 def list_ports():
@@ -82,6 +84,7 @@ class SerialLink(Link):
         self._latest = None
         self._stop = False
         self._threads = []
+        self._last_write = time.perf_counter()
 
     def open(self):
         try:
@@ -99,6 +102,7 @@ class SerialLink(Link):
             self.is_open = False
             return False
         self._stop = False
+        self._last_write = time.perf_counter()
         self.is_open = True
         self._threads = [
             threading.Thread(target=self._write_loop, daemon=True),
@@ -146,16 +150,26 @@ class SerialLink(Link):
         while True:
             with self._cv:
                 while not self._stop and not self._queue and self._latest is None:
+                    if time.perf_counter() - self._last_write >= KEEPALIVE_S:
+                        break
                     self._cv.wait(0.2)
                 if self._stop:
                     return
                 if self._queue:
                     data = self._queue.popleft()
-                else:
+                elif self._latest is not None:
                     data = self._latest
                     self._latest = None
+                else:
+                    data = P.heartbeat()
             try:
-                self.ser.write(data)
+                if len(data) > 8192:
+                    for i in range(0, len(data), 4096):
+                        self.ser.write(data[i:i + 4096])
+                        time.sleep(0.001)
+                else:
+                    self.ser.write(data)
+                self._last_write = time.perf_counter()
                 self.bytes_sent += len(data)
             except Exception as exc:
                 self._fail(exc)

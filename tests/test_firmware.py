@@ -28,11 +28,11 @@ def sim(tmp_path_factory):
     return out
 
 
-def run_fw(sim, tmp_path, data, chunk=64):
+def run_fw(sim, tmp_path, data, chunk=64, idle=0):
     inp = tmp_path / "in.bin"
     outp = tmp_path / "out.bin"
     inp.write_bytes(data)
-    res = subprocess.run([str(sim), str(inp), str(outp), str(chunk)], capture_output=True)
+    res = subprocess.run([str(sim), str(inp), str(outp), str(chunk), str(idle)], capture_output=True)
     assert res.returncode == 0, res.stderr
     frame = np.frombuffer(outp.read_bytes(), dtype="<u2").reshape(P.HEIGHT, P.WIDTH)
     return frame, res.stdout.decode("ascii", "replace"), res.stderr.decode()
@@ -141,3 +141,17 @@ def test_every_present_is_acknowledged_and_last_frame_shown(sim, tmp_path):
     frame, out, _ = run_fw(sim, tmp_path, data, chunk=7)
     assert out.count("K\n") == 3
     assert frame[15, 15] == 0x07E0 and frame[100, 100] == 0xF800
+
+
+def test_hello_reports_firmware_version(sim, tmp_path):
+    _, text, _ = run_fw(sim, tmp_path, P.hello())
+    assert text.startswith("SCREENLINK 1 160x120 fw ")
+
+
+def test_silence_from_the_app_brings_back_the_splash(sim, tmp_path):
+    splash, _, _ = run_fw(sim, tmp_path, b"")
+    data = P.clear(0xF800) + P.present() + P.heartbeat()
+    shown, _, _ = run_fw(sim, tmp_path, data, idle=1000)
+    assert (shown == 0xF800).all()
+    back, _, _ = run_fw(sim, tmp_path, data, idle=4000)
+    assert np.array_equal(back, splash)
