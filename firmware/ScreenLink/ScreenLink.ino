@@ -28,10 +28,16 @@
 #define PIN_MOSI D10
 
 static const int W = 160;
-static const int H = 80;
-static const size_t MAX_PAYLOAD = 26112;
-static const unsigned long IDLE_PRESENT_MS = 3;
-static const unsigned long MAX_DEFER_MS = 50;
+#ifndef SCREEN_H
+#if PANEL_VARIANT == 2
+#define SCREEN_H 120
+#else
+#define SCREEN_H 80
+#endif
+#endif
+static const int H = SCREEN_H;
+static const size_t MAX_PAYLOAD = 40000;
+static const unsigned long IDLE_PRESENT_MS = 8;
 static const unsigned long FRAME_TIMEOUT_MS = 300;
 
 static const uint8_t MAGIC1 = 0xA5;
@@ -85,7 +91,7 @@ static void present() {
 #if PANEL_VARIANT == 2
   tft.startWrite();
   if (quarter & 1) {
-    tft.setAddrWindow(40, 0, H * 2, W * 2);
+    tft.setAddrWindow((240 - H * 2) / 2, 0, H * 2, W * 2);
     for (int j = 0; j < W; j++) {
       for (int i = 0; i < H; i++) {
         int y = (quarter == 1) ? (H - 1 - i) : i;
@@ -103,7 +109,7 @@ static void present() {
     lastPresentMs = millis();
     return;
   }
-  tft.setAddrWindow(0, 40, W * 2, H * 2);
+  tft.setAddrWindow(0, (240 - H * 2) / 2, W * 2, H * 2);
   for (int y = 0; y < H; y++) {
     const uint16_t *row = src + y * W;
     for (int x = 0; x < W; x++) {
@@ -224,7 +230,7 @@ static void doText(const uint8_t *p, uint16_t n) {
 static void execute(uint8_t cmd, const uint8_t *p, uint16_t n) {
   switch (cmd) {
     case CMD_HELLO:
-      Serial.print("SCREENLINK 1 160x80\n");
+      Serial.print("SCREENLINK 1 160x120\n");
       break;
     case CMD_CLEAR:
       doClear(p, n);
@@ -256,7 +262,8 @@ static void execute(uint8_t cmd, const uint8_t *p, uint16_t n) {
       dirty = true;
       break;
     case CMD_PRESENT:
-      present();
+      if (Serial.available() > 0) dirty = true;
+      else present();
       break;
     default:
       break;
@@ -338,11 +345,11 @@ static void splash() {
   canvas.setTextWrap(false);
   canvas.setTextSize(1);
   canvas.setTextColor(0xFFFF);
-  canvas.setCursor(29, 28);
+  canvas.setCursor(29, H / 2 - 12);
   canvas.print("Display Companion");
   canvas.setTextSize(1);
   canvas.setTextColor(0x07FF);
-  canvas.setCursor(36, 48);
+  canvas.setCursor(36, H / 2 + 8);
   canvas.print("waiting for app");
   present();
 }
@@ -353,6 +360,7 @@ void setup() {
   SPI.begin(PIN_SCK, -1, PIN_MOSI, PIN_CS);
 #if PANEL_VARIANT == 2
   tft.init(240, 320);
+  tft.invertDisplay(false);
   tft.fillScreen(0);
 #elif PANEL_VARIANT == 1
   tft.initR(INITR_MINI160x80_PLUGIN);
@@ -370,6 +378,6 @@ void loop() {
   if (state != S_SYNC1 && millis() - lastByteMs > FRAME_TIMEOUT_MS) state = S_SYNC1;
   if (dirty) {
     unsigned long now = millis();
-    if (now - lastByteMs >= IDLE_PRESENT_MS || now - lastPresentMs >= MAX_DEFER_MS) present();
+    if (state == S_SYNC1 && now - lastByteMs >= IDLE_PRESENT_MS) present();
   }
 }

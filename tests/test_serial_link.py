@@ -65,10 +65,10 @@ def test_large_image_survives(pty_pair):
     try:
         disp = Display()
         disp.set_link(link)
-        disp.rects([(0, 0, 160, 80, (10, 200, 30))])
+        disp.rects([(0, 0, 160, 120, (10, 200, 30))])
         disp.send_full()
         disp.flush()
-        got = read_available(master, 26000)
+        got = read_available(master, 39000)
         dec = P.Decoder()
         cmds = [c for c, _ in dec.feed(got)]
         assert P.CMD_RECTS in cmds and P.CMD_IMAGE in cmds and P.CMD_PRESENT in cmds
@@ -83,9 +83,9 @@ def test_board_reply_reaches_callback(pty_pair):
     link.on_reply = replies.append
     assert link.open(), link.error
     try:
-        os.write(master, b"SCREENLINK 1 160x80\n")
+        os.write(master, b"SCREENLINK 1 160x120\n")
         assert wait_for(lambda: replies)
-        assert replies[0] == "SCREENLINK 1 160x80"
+        assert replies[0] == "SCREENLINK 1 160x120"
     finally:
         link.close()
 

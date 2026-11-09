@@ -19,7 +19,7 @@ def sim(tmp_path_factory):
         pytest.skip("g++ not available")
     out = tmp_path_factory.mktemp("fw") / "fw_sim"
     cmd = [
-        "g++", "-std=c++17", "-O1", "-DPANEL_VARIANT=0", f"-I{ROOT / 'stubs'}",
+        "g++", "-std=c++17", "-O1", "-DPANEL_VARIANT=0", "-DSCREEN_H=120", f"-I{ROOT / 'stubs'}",
         "-x", "c++", str(SKETCH), "-x", "c++", str(ROOT / "stubs" / "harness.cpp"),
         "-o", str(out),
     ]
@@ -104,7 +104,7 @@ def test_bad_checksum_frame_ignored_and_error_reported(sim, tmp_path):
 
 def test_hello_reply(sim, tmp_path):
     _, text, _ = run_fw(sim, tmp_path, P.hello(), 16)
-    assert text.startswith("SCREENLINK 1 160x80")
+    assert text.startswith("SCREENLINK 1 160x120")
 
 
 def test_swap_rb_applied_at_present(sim, tmp_path):

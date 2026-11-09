@@ -69,7 +69,7 @@ def test_image_clipped_at_edges():
 def test_hello_reply():
     b = SimBoard()
     b.feed(P.hello())
-    assert b.take_replies().decode().startswith("SCREENLINK 1 160x80")
+    assert b.take_replies().decode().startswith("SCREENLINK 1 160x120")
 
 
 def test_display_sends_and_mirrors_locally():

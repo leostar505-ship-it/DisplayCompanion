@@ -15,8 +15,8 @@ RADIAL_WAVE = "Radial + bass ring + waveform"
 RADIAL = "Radial + bass ring"
 STYLES = (RADIAL_WAVE, RADIAL, "Peak-hold bars", "Mirrored bars", "Oscilloscope")
 CX, CY = W // 2, H // 2
-R_MAX = H // 2 - 1          # 39: outer edge of the spectrum bars
-R_IN = 15                   # inner circle the spectrum bars grow from
+R_MAX = H // 2 - 1
+R_IN = round(H * 0.19)
 BACK = 0.55                 # how far bars fade back to red towards their tips
 COLOUR_MODES = {
     "Rainbow by frequency": colors.MODE_RAINBOW,
