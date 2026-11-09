@@ -151,3 +151,47 @@ def test_rainbow_ends_and_hex():
     assert colors.parse_hex("f80") == (255, 136, 0)
     assert colors.parse_hex("nope") is None
     assert colors.loudness_rgb(1.0) == (255, 0, 0)
+
+
+def test_old_visualiser_port_renders_pixels_on_the_screen_size():
+    import time
+    import numpy as np
+    from screenlink.audiovis.analysis import Analyser
+    from screenlink.audiovis.capture import DemoSource
+    from screenlink.audiovis.raster import Raster
+    from screenlink.audiovis.visuals import VISUALS, Look
+    from screenlink.display import H, W
+
+    src = DemoSource()
+    an = Analyser(src.rate)
+    look = Look("rainbow", (255, 0, 0), 1.6, 1.6, 0.5)
+    for name, cls in VISUALS.items():
+        vis = cls()
+        raster = Raster(W, H, False)
+        for _ in range(20):
+            an.update(src.latest(), 0.033, time.perf_counter())
+            px = raster.render(vis.frame(W, H, 0.033, an, look, True))
+        assert px.shape == (H, W, 3)
+        assert int(np.count_nonzero(px)) > 50, name
+
+
+def test_bars_hold_time_keeps_peaks_up():
+    import numpy as np
+    from screenlink.audiovis.analysis import BANDS, Analyser
+    from screenlink.audiovis.visuals import BarsVisual, Look
+
+    an = Analyser()
+    look = Look("rainbow", (255, 0, 0), 1.6)
+    look.hold = 5.0
+    vis = BarsVisual()
+    an.vals = np.ones(BANDS)
+    vis.frame(160, 120, 0.03, an, look, True)
+    top = vis.peaks[0]
+    an.vals = np.zeros(BANDS)
+    for _ in range(30):
+        vis.frame(160, 120, 0.03, an, look, True)
+    assert vis.peaks[0] == top
+    look.hold = 0.0
+    for _ in range(30):
+        vis.frame(160, 120, 0.03, an, look, True)
+    assert vis.peaks[0] < top
