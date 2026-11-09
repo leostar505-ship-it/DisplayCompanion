@@ -151,8 +151,11 @@ class Display:
         self.image(0, 0, img)
 
     def send_full(self):
-        data = np.ascontiguousarray(self.canvas.buf.astype("<u2")).tobytes()
-        self._add(P.image(0, 0, W, H, data))
+        buf = np.ascontiguousarray(self.canvas.buf.astype("<u2"))
+        band = 24
+        for y in range(0, H, band):
+            h = min(band, H - y)
+            self._add(P.image(0, y, W, h, buf[y:y + h].tobytes()))
 
     def text(self, x, y, size, rgb, bg_rgb, opaque, string):
         self._add(P.text(int(x), int(y), int(size), to565(rgb), to565(bg_rgb), opaque, string))

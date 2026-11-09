@@ -41,3 +41,4 @@ struct SerialStub {
 extern SerialStub Serial;
 void setup();
 void loop();
+inline void delay(unsigned long) {}
