@@ -133,3 +133,11 @@ def test_oversize_length_header_resyncs(sim, tmp_path):
     data = junk + P.clear(0x07E0) + P.present()
     got, _, _ = run_fw(sim, tmp_path, data, 64)
     assert got[10, 10] == 0x07E0
+
+
+def test_every_present_is_acknowledged_and_last_frame_shown(sim, tmp_path):
+    data = (P.clear(0x001F) + P.present() + P.clear(0xF800) + P.present()
+            + P.rects([(10, 10, 20, 20, 0x07E0)]) + P.present())
+    frame, out, _ = run_fw(sim, tmp_path, data, chunk=7)
+    assert out.count("K\n") == 3
+    assert frame[15, 15] == 0x07E0 and frame[100, 100] == 0xF800

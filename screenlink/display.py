@@ -1,3 +1,4 @@
+import collections
 import contextlib
 import time
 
@@ -40,8 +41,11 @@ class Display:
         self.silent_depth = 0
         self._pending = bytearray()
         self.version = 0
-        self.inflight = None
+        self.inflight = collections.deque()
         self.timed_out = False
+        self._region_prev = None
+
+    WINDOW = 2  # frames the board may hold at once (one drawing, one waiting)
 
     @property
     def canvas(self):
@@ -69,16 +73,17 @@ class Display:
             self.link.send(data)
 
     def ready(self):
-        if self.inflight is None:
+        if len(self.inflight) < self.WINDOW:
             return True
-        if time.perf_counter() - self.inflight > 0.4:
-            self.inflight = None
+        if time.perf_counter() - self.inflight[0] > 0.4:
+            self.inflight.clear()
             self.timed_out = True
             return True
         return False
 
     def ack(self):
-        self.inflight = None
+        if self.inflight:
+            self.inflight.popleft()
 
     def take_timeout(self):
         t = self.timed_out
@@ -92,7 +97,7 @@ class Display:
         self._pending.clear()
         if self.link is not None and self.link.is_open:
             if acked:
-                self.inflight = time.perf_counter()
+                self.inflight.append(time.perf_counter())
                 self.link.send(data)
             elif realtime:
                 self.link.send_latest(data)
@@ -146,6 +151,21 @@ class Display:
             return
         img = img.crop((0, 0, w, h))
         self._add(P.image(x, y, w, h, image_to_565(img).tobytes()))
+
+    def regions(self, px565):
+        """Send only what changed since the last call, as small rectangles or image blocks."""
+        from .regions import encode
+        prev = self._region_prev
+        self._region_prev = px565.copy()
+        rects, images = encode(prev, px565)
+        if rects:
+            self._add(P.rects(rects))
+        for x, y, w, h, data in images:
+            self._add(P.image(x, y, w, h, data))
+        return bool(rects or images)
+
+    def reset_regions(self):
+        self._region_prev = None
 
     def full_image(self, img):
         self.image(0, 0, img)

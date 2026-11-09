@@ -64,7 +64,38 @@ Adafruit_ST7735 tft(&SPI, PIN_CS, PIN_DC, PIN_RST);
 GFXcanvas16 canvas(W, H);
 
 alignas(4) static uint8_t payload[MAX_PAYLOAD];
+#if PANEL_VARIANT != 2
 static uint16_t swapped[W * H];
+#endif
+
+// Two-frame pipeline. The parser draws into `canvas`; on PRESENT the canvas is copied into a
+// frame slot and a second core (or, in the test harness, loop()) pushes the slot to the screen
+// while the next frame is already being received. At most one frame is being drawn and one is
+// waiting; a newer frame replaces a waiting one (its ack is still returned).
+struct Frame {
+  uint16_t buf[W * H];
+  uint8_t quarter;
+  bool swap;
+  bool ack;
+};
+static Frame frames[2];
+static volatile int drawingIdx = -1;
+static volatile int pendingIdx = -1;
+static volatile int ackOwed = 0;
+
+#ifdef ARDUINO_ARCH_ESP32
+static SemaphoreHandle_t qLock = NULL;    // protects the slot bookkeeping
+static SemaphoreHandle_t tftLock = NULL;  // protects the screen / SPI
+#define Q_TAKE() xSemaphoreTake(qLock, portMAX_DELAY)
+#define Q_GIVE() xSemaphoreGive(qLock)
+#define TFT_TAKE() xSemaphoreTake(tftLock, portMAX_DELAY)
+#define TFT_GIVE() xSemaphoreGive(tftLock)
+#else
+#define Q_TAKE()
+#define Q_GIVE()
+#define TFT_TAKE()
+#define TFT_GIVE()
+#endif
 
 enum State : uint8_t { S_SYNC1, S_SYNC2, S_CMD, S_LEN0, S_LEN1, S_PAYLOAD, S_CHK };
 
@@ -86,18 +117,20 @@ static inline uint16_t rd16(const uint8_t *p) {
 
 static void applyRotation(uint8_t q);
 
-static void present() {
-  uint16_t *src = canvas.getBuffer();
+static void drawFrame(const Frame &f) {
+  const uint16_t *src = f.buf;
+  const bool sw = f.swap;
+  const uint8_t qt = f.quarter;
 #if PANEL_VARIANT == 2
   tft.startWrite();
-  if (quarter & 1) {
+  if (qt & 1) {
     tft.setAddrWindow((240 - H * 2) / 2, 0, H * 2, W * 2);
     for (int j = 0; j < W; j++) {
       for (int i = 0; i < H; i++) {
-        int y = (quarter == 1) ? (H - 1 - i) : i;
-        int x = (quarter == 1) ? j : (W - 1 - j);
+        int y = (qt == 1) ? (H - 1 - i) : i;
+        int x = (qt == 1) ? j : (W - 1 - j);
         uint16_t v = src[y * W + x];
-        if (swapRB) v = (uint16_t)(((v & 0x1F) << 11) | (v & 0x07E0) | (v >> 11));
+        if (sw) v = (uint16_t)(((v & 0x1F) << 11) | (v & 0x07E0) | (v >> 11));
         rowbuf[2 * i] = v;
         rowbuf[2 * i + 1] = v;
       }
@@ -105,8 +138,6 @@ static void present() {
       tft.writePixels(rowbuf, H * 2);
     }
     tft.endWrite();
-    dirty = false;
-    lastPresentMs = millis();
     return;
   }
   tft.setAddrWindow(0, (240 - H * 2) / 2, W * 2, H * 2);
@@ -114,7 +145,7 @@ static void present() {
     const uint16_t *row = src + y * W;
     for (int x = 0; x < W; x++) {
       uint16_t v = row[x];
-      if (swapRB) v = (uint16_t)(((v & 0x1F) << 11) | (v & 0x07E0) | (v >> 11));
+      if (sw) v = (uint16_t)(((v & 0x1F) << 11) | (v & 0x07E0) | (v >> 11));
       rowbuf[2 * x] = v;
       rowbuf[2 * x + 1] = v;
     }
@@ -122,22 +153,78 @@ static void present() {
     tft.writePixels(rowbuf, W * 2);
   }
   tft.endWrite();
-  dirty = false;
-  lastPresentMs = millis();
-  return;
-#endif
-  if (swapRB) {
+#else
+  if (sw) {
     for (int i = 0; i < W * H; i++) {
       uint16_t v = src[i];
       swapped[i] = (uint16_t)(((v & 0x1F) << 11) | (v & 0x07E0) | (v >> 11));
     }
     tft.drawRGBBitmap(0, 0, swapped, W, H);
   } else {
-    tft.drawRGBBitmap(0, 0, src, W, H);
+    tft.drawRGBBitmap(0, 0, (uint16_t *)src, W, H);
   }
+#endif
+}
+
+// Copy the canvas into a slot for the draw side. If a frame is already waiting it is replaced.
+static void enqueueFrame(bool ack) {
+  Q_TAKE();
+  int idx;
+  if (pendingIdx >= 0) {
+    idx = pendingIdx;
+    if (frames[idx].ack) ackOwed = ackOwed + 1;  // dropped frame: still acknowledge it
+  } else {
+    idx = (drawingIdx == 0) ? 1 : 0;
+  }
+  memcpy(frames[idx].buf, canvas.getBuffer(), sizeof(frames[idx].buf));
+  frames[idx].quarter = quarter;
+  frames[idx].swap = swapRB;
+  frames[idx].ack = ack;
+  pendingIdx = idx;
   dirty = false;
   lastPresentMs = millis();
+  Q_GIVE();
 }
+
+// Draw the waiting frame, if any. Returns true when something was drawn.
+static bool serviceDraw() {
+  Q_TAKE();
+  if (pendingIdx < 0) {
+    Q_GIVE();
+    return false;
+  }
+  int idx = pendingIdx;
+  drawingIdx = idx;
+  pendingIdx = -1;
+  Q_GIVE();
+  TFT_TAKE();
+  drawFrame(frames[idx]);
+  TFT_GIVE();
+  Q_TAKE();
+  if (frames[idx].ack) ackOwed = ackOwed + 1;
+  drawingIdx = -1;
+  Q_GIVE();
+  return true;
+}
+
+static void sendAcks() {
+  while (true) {
+    Q_TAKE();
+    int n = ackOwed;
+    if (n > 0) ackOwed = n - 1;
+    Q_GIVE();
+    if (n <= 0) break;
+    Serial.print("K\n");
+  }
+}
+
+#ifdef ARDUINO_ARCH_ESP32
+static void drawTask(void *) {
+  for (;;) {
+    if (!serviceDraw()) vTaskDelay(1);
+  }
+}
+#endif
 
 static void reportError(const char *msg) {
   static bool haveErr = false;
@@ -255,19 +342,20 @@ static void execute(uint8_t cmd, const uint8_t *p, uint16_t n) {
       dirty = true;
       break;
     case CMD_INVERT:
+      TFT_TAKE();
 #if PANEL_VARIANT == 2
       if (n >= 1) tft.invertDisplay(p[0] == 0);
 #else
       if (n >= 1) tft.invertDisplay(p[0] != 0);
 #endif
+      TFT_GIVE();
       break;
     case CMD_SWAP_RB:
       if (n >= 1) swapRB = p[0] != 0;
       dirty = true;
       break;
     case CMD_PRESENT:
-      present();
-      Serial.print("K\n");
+      enqueueFrame(true);
       break;
     default:
       break;
@@ -329,6 +417,7 @@ static void consume() {
 }
 
 static void applyRotation(uint8_t q) {
+  TFT_TAKE();
 #if PANEL_VARIANT == 2
   quarter = q;
   tft.setRotation((q & 1) ? 0 : (q == 2 ? FLIPPED_ROTATION : BASE_ROTATION));
@@ -337,6 +426,7 @@ static void applyRotation(uint8_t q) {
   quarter = (q == 2) ? 2 : 0;
   tft.setRotation(quarter == 2 ? FLIPPED_ROTATION : BASE_ROTATION);
 #endif
+  TFT_GIVE();
 }
 
 static void splash() {
@@ -355,10 +445,15 @@ static void splash() {
   canvas.setTextColor(0x07FF);
   canvas.setCursor(36, H / 2 + 8);
   canvas.print("waiting for app");
-  present();
+  enqueueFrame(false);
+  serviceDraw();
 }
 
 void setup() {
+#ifdef ARDUINO_ARCH_ESP32
+  qLock = xSemaphoreCreateMutex();
+  tftLock = xSemaphoreCreateMutex();
+#endif
   Serial.setRxBufferSize(32768);
   Serial.begin(115200);
   SPI.begin(PIN_SCK, -1, PIN_MOSI, PIN_CS);
@@ -375,6 +470,9 @@ void setup() {
   tft.setRotation(BASE_ROTATION);
   tft.fillScreen(0);
   splash();
+#ifdef ARDUINO_ARCH_ESP32
+  xTaskCreatePinnedToCore(drawTask, "draw", 4096, NULL, 2, NULL, 0);
+#endif
 }
 
 void loop() {
@@ -382,6 +480,10 @@ void loop() {
   if (state != S_SYNC1 && millis() - lastByteMs > FRAME_TIMEOUT_MS) state = S_SYNC1;
   if (dirty) {
     unsigned long now = millis();
-    if (state == S_SYNC1 && (now - lastByteMs >= IDLE_PRESENT_MS || now - lastPresentMs >= 60)) present();
+    if (state == S_SYNC1 && (now - lastByteMs >= IDLE_PRESENT_MS || now - lastPresentMs >= 60)) enqueueFrame(false);
   }
+#ifndef ARDUINO_ARCH_ESP32
+  serviceDraw();
+#endif
+  sendAcks();
 }

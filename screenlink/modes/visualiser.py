@@ -3,7 +3,6 @@ import tkinter as tk
 from tkinter import ttk
 
 import numpy as np
-from PIL import Image
 
 from ..audiovis import colors
 from ..audiovis.analysis import TRIGGERS, Analyser
@@ -203,7 +202,7 @@ class VisualiserMode(Mode):
     def activate(self):
         self._start_source()
         self.accum = 0.0
-        self.prev = None
+        self.display.reset_regions()
         self.last = time.perf_counter()
         self.display.clear((0, 0, 0))
         self.display.flush()
@@ -212,20 +211,10 @@ class VisualiserMode(Mode):
         self._stop_source()
 
     def _send(self, px):
-        prev = self.prev
-        self.prev = px.copy()
-        if prev is None:
-            box = (0, 0, W, H)
-        else:
-            changed = np.any(px != prev, axis=2)
-            if not changed.any():
-                return
-            ys = np.where(changed.any(axis=1))[0]
-            xs = np.where(changed.any(axis=0))[0]
-            box = (int(xs[0]), int(ys[0]), int(xs[-1]) + 1, int(ys[-1]) + 1)
-        x0, y0, x1, y1 = box
-        self.display.image(x0, y0, Image.fromarray(px[y0:y1, x0:x1], "RGB"))
-        self.display.flush(acked=True)
+        arr = px.astype(np.uint16)
+        px565 = ((arr[..., 0] & 0xF8) << 8) | ((arr[..., 1] & 0xFC) << 3) | (arr[..., 2] >> 3)
+        if self.display.regions(px565):
+            self.display.flush(acked=True)
 
     def _smooth_bars(self, step):
         s = self.bar_smooth.get()
@@ -269,7 +258,7 @@ class VisualiserMode(Mode):
         prims = self.visual.frame(W, H, step, self.analyser, self.look, True)
         px = np.ascontiguousarray(self.raster.render(prims))
         if self.display.take_timeout():
-            self.prev = None
+            self.display.reset_regions()
         self._send(px)
         self.frames += 1
         if self.frames % 20 == 1:
