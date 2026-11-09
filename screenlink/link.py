@@ -164,9 +164,11 @@ class SerialLink(Link):
                     data = P.heartbeat()
             try:
                 if len(data) > 8192:
-                    for i in range(0, len(data), 4096):
-                        self.ser.write(data[i:i + 4096])
-                        time.sleep(0.001)
+                    for i in range(0, len(data), 512):
+                        t0 = time.perf_counter()
+                        self.ser.write(data[i:i + 512])
+                        while time.perf_counter() - t0 < 0.0005:
+                            time.sleep(0)
                 else:
                     self.ser.write(data)
                 self._last_write = time.perf_counter()

@@ -42,8 +42,9 @@ struct SerialStub {
     return i;
   }
   void print(const char *s) { tx += s; }
+  void print(unsigned v) { tx += std::to_string(v); }
   void begin(unsigned long) {}
-  void setRxBufferSize(size_t) {}
+  size_t setRxBufferSize(size_t n) { return n; }
 };
 
 extern SerialStub Serial;

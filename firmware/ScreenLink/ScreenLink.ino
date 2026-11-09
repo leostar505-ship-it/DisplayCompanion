@@ -1,4 +1,4 @@
-// Display Companion firmware 1.5.1
+// Display Companion firmware 1.5.2
 #include <Arduino.h>
 #include <SPI.h>
 #include <Adafruit_GFX.h>
@@ -14,7 +14,7 @@
 #define BASE_ROTATION 1
 #define FLIPPED_ROTATION 3
 #endif
-#define FW_VERSION "1.5.1"
+#define FW_VERSION "1.5.2"
 #define SPI_HZ 40000000UL
 
 #if PANEL_VARIANT == 2
@@ -102,9 +102,23 @@ static SemaphoreHandle_t tftLock = NULL;  // protects the screen / SPI
 #define TFT_GIVE()
 #endif
 
-enum State : uint8_t { S_SYNC1, S_SYNC2, S_CMD, S_LEN0, S_LEN1, S_PAYLOAD, S_CHK };
+enum State : uint8_t { S_LOST, S_SYNC1, S_SYNC2, S_CMD, S_LEN0, S_LEN1, S_PAYLOAD, S_CHK };
 
 static State state = S_SYNC1;
+static size_t rxBytes = 0;
+static unsigned long lostSinceMs = 0;
+
+// Longest payload each command can legitimately have; anything longer is a false frame start.
+static uint16_t maxLenFor(uint8_t cmd) {
+  switch (cmd) {
+    case CMD_HELLO: case CMD_PRESENT: case CMD_HEARTBEAT:
+    case CMD_FLIP: case CMD_INVERT: case CMD_SWAP_RB: case CMD_CLEAR: return 16;
+    case CMD_RECTS: return 1 + 255 * 6;
+    case CMD_LINES: return 1 + 255 * 10;
+    case CMD_TEXT: return 400;
+    default: return (uint16_t)MAX_PAYLOAD;
+  }
+}
 static uint8_t curCmd = 0;
 static uint16_t curLen = 0;
 static uint16_t gotLen = 0;
@@ -370,6 +384,9 @@ static void execute(uint8_t cmd, const uint8_t *p, uint16_t n) {
   switch (cmd) {
     case CMD_HELLO:
       Serial.print("SCREENLINK 1 160x120 fw " FW_VERSION "\n");
+      Serial.print("RX ");
+      Serial.print((unsigned)rxBytes);
+      Serial.print("\n");
       break;
     case CMD_CLEAR:
       doClear(p, n);
@@ -433,6 +450,8 @@ static void consume() {
     }
     uint8_t b = (uint8_t)Serial.read();
     switch (state) {
+      case S_LOST:
+        break;
       case S_SYNC1:
         if (b == MAGIC1) state = S_SYNC2;
         break;
@@ -441,6 +460,7 @@ static void consume() {
         else if (b != MAGIC1) state = S_SYNC1;
         break;
       case S_CMD:
+        if (b == 0 || b > CMD_HEARTBEAT || b == 0x0B) { state = S_SYNC1; break; }
         curCmd = b;
         runSum = b;
         state = S_LEN0;
@@ -453,7 +473,7 @@ static void consume() {
       case S_LEN1:
         curLen = (uint16_t)(curLen | ((uint16_t)b << 8));
         runSum = (uint8_t)(runSum + b);
-        if (curLen > MAX_PAYLOAD) {
+        if (curLen > maxLenFor(curCmd)) {
           state = S_SYNC1;
         } else {
           gotLen = 0;
@@ -466,7 +486,12 @@ static void consume() {
           lastAppMs = millis();
           execute(curCmd, payload, curLen);
         }
-        else reportError("chk");
+        else {
+          reportError("chk");
+          lostSinceMs = millis();
+          state = S_LOST;  // drop the rest of this burst; pixel data can imitate a frame start
+          break;
+        }
         state = S_SYNC1;
         break;
       default:
@@ -518,7 +543,7 @@ void setup() {
   qLock = xSemaphoreCreateMutex();
   tftLock = xSemaphoreCreateMutex();
 #endif
-  Serial.setRxBufferSize(32768);
+  rxBytes = Serial.setRxBufferSize(32768);
   Serial.begin(115200);
   SPI.begin(PIN_SCK, -1, PIN_MOSI, PIN_CS);
 #if PANEL_VARIANT == 2
@@ -541,7 +566,9 @@ void setup() {
 
 void loop() {
   consume();
-  if (state != S_SYNC1 && millis() - lastByteMs > FRAME_TIMEOUT_MS) state = S_SYNC1;
+  if (state == S_LOST) {
+    if (millis() - lastByteMs >= 6 || millis() - lostSinceMs > 150) state = S_SYNC1;
+  } else if (state != S_SYNC1 && millis() - lastByteMs > FRAME_TIMEOUT_MS) state = S_SYNC1;
   if (appActive && millis() - lastAppMs > APP_TIMEOUT_MS && millis() - lastByteMs > APP_TIMEOUT_MS) {
     appActive = false;
     splash();
