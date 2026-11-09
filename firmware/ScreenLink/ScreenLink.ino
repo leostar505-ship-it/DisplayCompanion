@@ -1,4 +1,4 @@
-// Display Companion firmware 1.5.2
+// Display Companion firmware 1.5.3
 #include <Arduino.h>
 #include <SPI.h>
 #include <Adafruit_GFX.h>
@@ -14,7 +14,7 @@
 #define BASE_ROTATION 1
 #define FLIPPED_ROTATION 3
 #endif
-#define FW_VERSION "1.5.2"
+#define FW_VERSION "1.5.3"
 #define SPI_HZ 40000000UL
 
 #if PANEL_VARIANT == 2
@@ -76,8 +76,12 @@ static uint16_t swapped[W * H];
 // frame slot and a second core (or, in the test harness, loop()) pushes the slot to the screen
 // while the next frame is already being received. At most one frame is being drawn and one is
 // waiting; a newer frame replaces a waiting one (its ack is still returned).
+static const int SW = 16;
+static const int NS = (W + SW - 1) / SW;
+
 struct Frame {
   uint16_t buf[W * H];
+  int16_t r[NS][4];
   uint8_t quarter;
   bool swap;
   bool ack;
@@ -132,6 +136,11 @@ static bool dirty = false;
 static bool swapRB = false;
 static uint8_t quarter = 0;
 static int16_t dx0 = W, dy0 = H, dx1 = 0, dy1 = 0;
+static int16_t dr[NS][4];
+
+static void clearStrips() {
+  for (int i = 0; i < NS; i++) { dr[i][0] = W; dr[i][1] = H; dr[i][2] = 0; dr[i][3] = 0; }
+}
 
 static void markDirty(int x, int y, int w, int h) {
   int x1 = x + w, y1 = y + h;
@@ -144,6 +153,14 @@ static void markDirty(int x, int y, int w, int h) {
   if (y < dy0) dy0 = y;
   if (x1 > dx1) dx1 = x1;
   if (y1 > dy1) dy1 = y1;
+  for (int si = x / SW; si <= (x1 - 1) / SW; si++) {
+    int a = si * SW, b = a + SW;
+    int rx0 = x > a ? x : a, rx1 = x1 < b ? x1 : b;
+    if (rx0 < dr[si][0]) dr[si][0] = rx0;
+    if (y < dr[si][1]) dr[si][1] = y;
+    if (rx1 > dr[si][2]) dr[si][2] = rx1;
+    if (y1 > dr[si][3]) dr[si][3] = y1;
+  }
 }
 static void markAll() { markDirty(0, 0, W, H); }
 
@@ -153,19 +170,19 @@ static inline uint16_t rd16(const uint8_t *p) {
 
 static void applyRotation(uint8_t q);
 
-static void drawFrame(const Frame &f) {
+static void drawRegion(const Frame &f, int rx0, int ry0, int rx1, int ry1) {
   const uint16_t *src = f.buf;
   const bool sw = f.swap;
   const uint8_t qt = f.quarter;
 #if PANEL_VARIANT == 2
-  if (f.x1 <= f.x0 || f.y1 <= f.y0) return;
+  if (rx1 <= rx0 || ry1 <= ry0) return;
   tft.startWrite();
   if (qt & 1) {
     int i0, i1, j0, j1;
     if (qt == 1) {
-      i0 = H - f.y1; i1 = H - f.y0; j0 = f.x0; j1 = f.x1;
+      i0 = H - ry1; i1 = H - ry0; j0 = rx0; j1 = rx1;
     } else {
-      i0 = f.y0; i1 = f.y1; j0 = W - f.x1; j1 = W - f.x0;
+      i0 = ry0; i1 = ry1; j0 = W - rx1; j1 = W - rx0;
     }
     const int n = (i1 - i0) * 2;
     tft.setAddrWindow((240 - H * 2) / 2 + i0 * 2, j0 * 2, n, (j1 - j0) * 2);
@@ -184,15 +201,15 @@ static void drawFrame(const Frame &f) {
     tft.endWrite();
     return;
   }
-  const int n = (f.x1 - f.x0) * 2;
-  tft.setAddrWindow(f.x0 * 2, (240 - H * 2) / 2 + f.y0 * 2, n, (f.y1 - f.y0) * 2);
-  for (int y = f.y0; y < f.y1; y++) {
+  const int n = (rx1 - rx0) * 2;
+  tft.setAddrWindow(rx0 * 2, (240 - H * 2) / 2 + ry0 * 2, n, (ry1 - ry0) * 2);
+  for (int y = ry0; y < ry1; y++) {
     const uint16_t *row = src + y * W;
-    for (int x = f.x0; x < f.x1; x++) {
+    for (int x = rx0; x < rx1; x++) {
       uint16_t v = row[x];
       if (sw) v = (uint16_t)(((v & 0x1F) << 11) | (v & 0x07E0) | (v >> 11));
-      rowbuf[2 * (x - f.x0)] = v;
-      rowbuf[2 * (x - f.x0) + 1] = v;
+      rowbuf[2 * (x - rx0)] = v;
+      rowbuf[2 * (x - rx0) + 1] = v;
     }
     memcpy(rowbuf + n, rowbuf, n * 2);
     tft.writePixels(rowbuf, n * 2);
@@ -208,6 +225,26 @@ static void drawFrame(const Frame &f) {
   } else {
     tft.drawRGBBitmap(0, 0, (uint16_t *)src, W, H);
   }
+#endif
+}
+
+static void drawFrame(const Frame &f) {
+#if PANEL_VARIANT == 2
+  long sum = 0;
+  for (int i = 0; i < NS; i++) {
+    if (f.r[i][2] > f.r[i][0] && f.r[i][3] > f.r[i][1]) sum += (long)(f.r[i][2] - f.r[i][0]) * (f.r[i][3] - f.r[i][1]);
+  }
+  long box = (long)(f.x1 - f.x0) * (f.y1 - f.y0);
+  if (box <= 0) return;
+  if (sum * 10 >= box * 7) {
+    drawRegion(f, f.x0, f.y0, f.x1, f.y1);
+    return;
+  }
+  for (int i = 0; i < NS; i++) {
+    if (f.r[i][2] > f.r[i][0] && f.r[i][3] > f.r[i][1]) drawRegion(f, f.r[i][0], f.r[i][1], f.r[i][2], f.r[i][3]);
+  }
+#else
+  drawRegion(f, f.x0, f.y0, f.x1, f.y1);
 #endif
 }
 
@@ -232,6 +269,18 @@ static void enqueueFrame(bool ack) {
   } else {
     idx = (drawingIdx == 0) ? 1 : 0;
   }
+  if (pendingIdx >= 0) {
+    for (int i = 0; i < NS; i++) {
+      const int16_t *o = frames[idx].r[i];
+      if (o[2] <= o[0] || o[3] <= o[1]) continue;
+      if (o[0] < dr[i][0]) dr[i][0] = o[0];
+      if (o[1] < dr[i][1]) dr[i][1] = o[1];
+      if (o[2] > dr[i][2]) dr[i][2] = o[2];
+      if (o[3] > dr[i][3]) dr[i][3] = o[3];
+    }
+  }
+  memcpy(frames[idx].r, dr, sizeof(dr));
+  clearStrips();
   memcpy(frames[idx].buf, canvas.getBuffer(), sizeof(frames[idx].buf));
   frames[idx].quarter = quarter;
   frames[idx].swap = swapRB;
@@ -539,6 +588,7 @@ static void splash() {
 }
 
 void setup() {
+  clearStrips();
 #ifdef ARDUINO_ARCH_ESP32
   qLock = xSemaphoreCreateMutex();
   tftLock = xSemaphoreCreateMutex();
