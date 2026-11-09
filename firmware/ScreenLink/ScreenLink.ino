@@ -266,7 +266,7 @@ static void execute(uint8_t cmd, const uint8_t *p, uint16_t n) {
       dirty = true;
       break;
     case CMD_PRESENT:
-      if (Serial.available() > 0) dirty = true;
+      if (Serial.available() > 0 && millis() - lastPresentMs < 30) dirty = true;
       else present();
       break;
     default:
@@ -382,6 +382,6 @@ void loop() {
   if (state != S_SYNC1 && millis() - lastByteMs > FRAME_TIMEOUT_MS) state = S_SYNC1;
   if (dirty) {
     unsigned long now = millis();
-    if (state == S_SYNC1 && now - lastByteMs >= IDLE_PRESENT_MS) present();
+    if (state == S_SYNC1 && (now - lastByteMs >= IDLE_PRESENT_MS || now - lastPresentMs >= 60)) present();
   }
 }
