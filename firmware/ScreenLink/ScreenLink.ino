@@ -255,7 +255,11 @@ static void execute(uint8_t cmd, const uint8_t *p, uint16_t n) {
       dirty = true;
       break;
     case CMD_INVERT:
+#if PANEL_VARIANT == 2
+      if (n >= 1) tft.invertDisplay(p[0] == 0);
+#else
       if (n >= 1) tft.invertDisplay(p[0] != 0);
+#endif
       break;
     case CMD_SWAP_RB:
       if (n >= 1) swapRB = p[0] != 0;
@@ -360,7 +364,7 @@ void setup() {
   SPI.begin(PIN_SCK, -1, PIN_MOSI, PIN_CS);
 #if PANEL_VARIANT == 2
   tft.init(240, 320);
-  tft.invertDisplay(false);
+  tft.invertDisplay(true);
   tft.fillScreen(0);
 #elif PANEL_VARIANT == 1
   tft.initR(INITR_MINI160x80_PLUGIN);
