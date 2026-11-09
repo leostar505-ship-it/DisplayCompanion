@@ -1,5 +1,6 @@
-// Display Companion firmware 1.5.4
+// Display Companion firmware 1.5.5
 #include <Arduino.h>
+#include <stdio.h>
 #include <SPI.h>
 #include <Adafruit_GFX.h>
 
@@ -14,7 +15,7 @@
 #define BASE_ROTATION 1
 #define FLIPPED_ROTATION 3
 #endif
-#define FW_VERSION "1.5.4"
+#define FW_VERSION "1.5.5"
 #define SPI_HZ 80000000UL
 
 #if PANEL_VARIANT == 2
@@ -536,7 +537,9 @@ static void consume() {
           execute(curCmd, payload, curLen);
         }
         else {
-          reportError("chk");
+          char info[40];
+          snprintf(info, sizeof(info), "chk c%02X l%u s%02X/%02X", curCmd, (unsigned)curLen, b, runSum);
+          reportError(info);
           lostSinceMs = millis();
           state = S_LOST;  // drop the rest of this burst; pixel data can imitate a frame start
           break;
