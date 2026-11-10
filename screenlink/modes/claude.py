@@ -4,6 +4,8 @@ import time
 import tkinter as tk
 from tkinter import ttk
 
+import numpy as np
+
 from .. import fonts
 from ..assistant import api, claude_code, cues, hotkey, screenshot, speech
 from ..assistant.hud import Hud
@@ -45,6 +47,7 @@ class ClaudeMode(Mode):
         self.reply_text = ""
         self.shown_key = None
         self.last_img = None
+        self.want_send = False
         self.cps_cache = None
         self.downloading = False
         self.grab = screenshot.grab
@@ -323,6 +326,8 @@ class ClaudeMode(Mode):
         self.active = True
         if self.hud is None:
             self.hud = Hud(self.app.root, self.settings.get("hud_scale"), self.settings.get("hud_speed"))
+        self.display.reset_regions()
+        self.want_send = True
         self._refresh_voice()
         self._refresh_fits()
         self._refresh_backend()
@@ -348,16 +353,32 @@ class ClaudeMode(Mode):
         self.pending_error = None
 
     def on_link_change(self):
-        if self.last_img is not None:
-            self._push(self.last_img)
+        self.display.reset_regions()
+        self.want_send = True
 
     def _set_status(self, text):
         self.status.configure(text=text)
 
     def _push(self, img):
         self.last_img = img
-        self.display.full_image(img)
-        self.display.flush(realtime=True)
+        self.want_send = True
+
+    def _send_pending(self):
+        if not self.active or self.last_img is None:
+            return
+        if not self.display.ready():
+            return
+        if self.display.take_timeout():
+            self.display.reset_regions()
+            self.want_send = True
+        if not self.want_send and not self.display._stale:
+            return
+        img = self.last_img.convert("RGB")
+        arr = np.asarray(img, dtype=np.uint16)
+        px565 = ((arr[..., 0] & 0xF8) << 8) | ((arr[..., 1] & 0xFC) << 3) | (arr[..., 2] >> 3)
+        self.want_send = False
+        if self.display.regions(px565):
+            self.display.flush(acked=True)
 
     def _idle_screen(self):
         if self.phase == "idle" and not self.reply_text:
@@ -499,6 +520,10 @@ class ClaudeMode(Mode):
         self._push(img)
 
     def tick(self, dt):
+        self._tick_phase()
+        self._send_pending()
+
+    def _tick_phase(self):
         self._pump()
         now = time.perf_counter()
         if self.phase == "shot" and now >= self.shot_until:
