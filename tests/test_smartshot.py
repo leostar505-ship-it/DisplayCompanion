@@ -73,3 +73,24 @@ def test_claude_code_allows_web_tools():
     assert "search the web" in seen["prompt"]
     claude_code.ask("sonnet", "hi", None, 100, [], runner=runner, exe="claude", web=False)
     assert "--allowedTools" not in seen["cmd"]
+
+
+def test_classifier_verdicts():
+    class R:
+        returncode = 0
+        stderr = ""
+
+        def __init__(self, out):
+            self.stdout = out
+
+    cmds = []
+
+    def runner(out):
+        def run(cmd, prompt, cwd, timeout):
+            cmds.append((cmd, prompt))
+            return R(out)
+        return run
+
+    assert claude_code.classify("what game should I play", runner=runner("YES"), exe="claude") is True
+    assert claude_code.classify("capital of France", runner=runner("No."), exe="claude") is False
+    assert "haiku" in cmds[0][0] and "what game should I play" in cmds[0][1]

@@ -112,3 +112,28 @@ def ask(key, model, question, image_b64, limit, history=(), timeout=60, opener=N
     if not text:
         raise AssistantError("Claude sent an empty reply.")
     return text
+
+
+HAIKU = "claude-haiku-5-5"
+
+
+def classify(key, question, timeout=30, opener=None):
+    from .smartshot import CLASSIFY_PROMPT, parse_verdict
+    body = json.dumps({
+        "model": HAIKU,
+        "max_tokens": 5,
+        "messages": [{"role": "user", "content": CLASSIFY_PROMPT % question.strip()}],
+    }).encode("utf-8")
+    req = urllib.request.Request(URL, data=body, method="POST", headers={
+        "content-type": "application/json",
+        "x-api-key": key,
+        "anthropic-version": VERSION,
+    })
+    open_url = opener or urllib.request.urlopen
+    try:
+        with open_url(req, timeout=timeout) as resp:
+            payload = json.loads(resp.read().decode("utf-8", "replace"))
+    except (urllib.error.URLError, OSError, ValueError):
+        raise AssistantError("Could not reach Claude: classifier")
+    parts = [b.get("text", "") for b in payload.get("content", []) if b.get("type") == "text"]
+    return parse_verdict("".join(parts))

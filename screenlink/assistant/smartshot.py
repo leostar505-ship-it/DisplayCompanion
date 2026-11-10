@@ -51,3 +51,17 @@ def is_cancel(text):
 
 def wants_more(reply):
     return str(reply).strip().upper().replace(" ", "_").startswith(NEED)
+
+
+CLASSIFY_PROMPT = (
+    "You are a router. Decide whether answering the user's question well would depend on what is currently on "
+    "their computer screen, or on what they are doing right now. Answer YES if it could plausibly depend on that "
+    "(for example: recommendations about what to play, watch, buy or do, what to click, anything about this or that "
+    "or here, their open apps, errors, text, images, games or pages). Answer NO only for general knowledge, maths, "
+    "writing, facts or chat that stands completely on its own. If unsure, answer YES. "
+    "Reply with exactly one word: YES or NO.\n\nQuestion: %s"
+)
+
+
+def parse_verdict(text):
+    return str(text).strip().upper().startswith("YES")

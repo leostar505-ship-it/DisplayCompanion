@@ -98,3 +98,21 @@ def ask(model, question, image_b64, limit, history=(), timeout=TIMEOUT, runner=N
             raise AssistantError("Claude Code is not signed in. Run `claude` in a terminal once and log in.")
         raise AssistantError(("Claude Code failed: %s" % detail)[:160])
     return out
+
+
+def classify(question, timeout=60, runner=None, exe=None):
+    from .smartshot import CLASSIFY_PROMPT, parse_verdict
+    exe = exe or find()
+    if not exe:
+        raise AssistantError("Claude Code was not found.")
+    with tempfile.TemporaryDirectory(prefix="dc_claude_") as folder:
+        try:
+            res = (runner or default_runner)([exe, "-p", "--model", "haiku"], CLASSIFY_PROMPT % question.strip(),
+                                             folder, timeout)
+        except subprocess.TimeoutExpired:
+            raise AssistantError("Claude Code took too long to answer.")
+        except OSError as exc:
+            raise AssistantError("Could not start Claude Code: %s" % exc)
+    if res.returncode != 0 or not (res.stdout or "").strip():
+        raise AssistantError("Claude Code failed: classifier")
+    return parse_verdict(res.stdout)

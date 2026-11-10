@@ -78,6 +78,7 @@ class ClaudeMode(Mode):
         self.cps_cache = None
         self.downloading = False
         self.grab = screenshot.grab
+        self.classify = self._classify
         self.ask = self._dispatch
         self.play = cues.play
 
@@ -86,6 +87,11 @@ class ClaudeMode(Mode):
             return claude_code.ask(model, question, image, limit, history, allow_screen=allow_screen,
                                    web=bool(self.settings.get("web_search")))
         return api.ask(key, model, question, image, limit, history, allow_screen=allow_screen)
+
+    def _classify(self, key, question):
+        if self.settings.get("backend") == "claude_code":
+            return claude_code.classify(question)
+        return api.classify(key, question)
 
     def build(self, parent):
         f = ttk.Frame(parent)
@@ -584,19 +590,20 @@ class ClaudeMode(Mode):
         self._screen_status("Looking at your screen...")
         return image
 
-    def _run(self, image, allow_screen):
+    def _run(self, image, classify_first):
         key, model, question, limit, history = self.run_ctx
 
         def work():
             try:
-                if allow_screen:
-                    reply = self.ask(key, model, question, image, limit, history, allow_screen=True)
-                else:
-                    reply = self.ask(key, model, question, image, limit, history)
-                if allow_screen and smartshot.wants_more(reply):
-                    self.events.put(("need_screen",))
-                else:
-                    self.events.put(("reply", reply))
+                if classify_first:
+                    try:
+                        needs = self.classify(key, question)
+                    except Exception:
+                        needs = False
+                    if needs:
+                        self.events.put(("need_screen",))
+                        return
+                self.events.put(("reply", self.ask(key, model, question, image, limit, history)))
             except api.AssistantError as exc:
                 self.events.put(("error", str(exc)))
             except Exception as exc:
@@ -720,7 +727,7 @@ class ClaudeMode(Mode):
                 if self.phase in ("shot", "thinking"):
                     image = self._take_shot()
                     if image is not None:
-                        self._set_status("Claude wants to see your screen. Looking...")
+                        self._set_status("Your question looks like it needs your screen. Looking...")
                         self._run(image, False)
             elif kind == "reply":
                 if self.phase in ("shot", "thinking"):
