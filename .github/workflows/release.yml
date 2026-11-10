@@ -26,7 +26,7 @@ jobs:
         run: >
           python -m PyInstaller --noconfirm --windowed --name DisplayCompanion
           --icon assets/icon.ico --add-data "assets;assets"
-          --hidden-import pyaudiowpatch --hidden-import serial.tools.list_ports
+          --hidden-import pyaudiowpatch --collect-all vosk --hidden-import serial.tools.list_ports
           run_screenlink.py
 
       - name: Install Inno Setup

@@ -16,7 +16,17 @@ def clamp01(value):
     return value
 
 
+def tune_red(h, s, l):
+    h = h % 360.0
+    if h < 60.0:
+        h = 60.0 * (h / 60.0) ** 1.7
+    d = h if h <= 180.0 else h - 360.0
+    f = max(0.0, 1.0 - abs(d) / 30.0)
+    return h, s + (100.0 - s) * f, l + (50.0 - l) * f
+
+
 def hsl_to_rgb(h, s, l):
+    h, s, l = tune_red(h, s, l)
     r, g, b = colorsys.hls_to_rgb((h % 360.0) / 360.0, l / 100.0, s / 100.0)
     return (int(round(r * 255)), int(round(g * 255)), int(round(b * 255)))
 

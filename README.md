@@ -62,6 +62,17 @@ To build a standalone exe: run `build_exe.bat`, the result is in `dist\DisplayCo
 
 To build a proper Windows installer (installs to Program Files, adds a desktop shortcut and Start menu entry, has an uninstaller): run `build_installer.bat`. It builds the exe, installs Inno Setup with winget if needed, and writes `installer_output\DisplayCompanion-Setup.exe`.
 
+## Claude tab (voice assistant)
+
+Pick **Claude** in the mode list, then open **Setup** and paste an Anthropic API key (stored only in `%APPDATA%\DisplayCompanion\assistant.json`).
+
+- **Hey Claude**: click *Download voice model* once (about 40 MB, runs offline afterwards). While the Claude tab is open the microphone listens for "Hey Claude", then records your question until you stop talking.
+- **Hotkey**: default `ctrl+alt+c`, works in any app. Change it in Setup.
+- **Ask without talking**: type in the Ask box.
+- Each question can include a screenshot of your screen (untick it to turn that off). The HUD hides itself before the screenshot, and the question is sent with "Sent via Display Companion" appended.
+- The reply is trimmed to what fits on the screen at the chosen font size and typed out like real typing. The font and size are on the Ask Claude tab, with a live count of how many characters fit.
+- The orange HUD card (listening, screenshot, thinking, responding, done, error) and its sound cues can be turned off or resized. It cannot show over exclusive-fullscreen games.
+
 ## Protocol (for the Raw tab or your own tools)
 
 Every message from the PC is a frame:
