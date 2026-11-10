@@ -169,3 +169,24 @@ def wrap_text(text, font, width, narrow=None):
             cur = word
         lines.append(cur)
     return lines
+
+
+def metrics(font, spacing=2):
+    probe = ImageDraw.Draw(Image.new("RGB", (4, 4)))
+    one = probe.textbbox((0, 0), "Ag", font=font)
+    two = probe.multiline_textbbox((0, 0), "Ag\nAg", font=font, spacing=spacing)
+    single = one[3] - one[1]
+    return one[1], max(1, (two[3] - two[1]) - single)
+
+
+def draw_lines(lines, font, fg, bg, margin=2, spacing=2, notch=None):
+    img = Image.new("RGB", (WIDTH, HEIGHT), bg)
+    draw = ImageDraw.Draw(img)
+    top, pitch = metrics(font, spacing)
+    count = max(1, -(-(notch[1] - margin) // pitch)) if notch else 0
+    y = margin
+    for i, line in enumerate(lines):
+        x = margin + (notch[0] if notch and i < count else 0)
+        draw.text((x, y - top), line, fill=fg, font=font)
+        y += pitch
+    return img

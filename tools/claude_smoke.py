@@ -21,7 +21,6 @@ app = App.__new__(App)
 os.environ["APPDATA"] = tempfile.mkdtemp()
 app.assistant_settings = Settings(pathlib.Path(tempfile.mkdtemp()) / "a.json")
 app.assistant_settings.set("auto_download", False)
-app.assistant_settings.set("spinner", True)
 App.__init__(app, root)
 root.geometry("+0+0")
 
@@ -100,7 +99,6 @@ assert mode.reply_text.startswith("Your screen shows")
 pump(0.3)
 shot("claude_done")
 assert mode.hud.current_kind() == "done", mode.hud.current_kind()
-assert mode.spinner.state == "pause", mode.spinner.state
 
 mode.ask = lambda *a, **k: (_ for _ in ()).throw(api.AssistantError("The API key was rejected."))
 cues_played.clear()

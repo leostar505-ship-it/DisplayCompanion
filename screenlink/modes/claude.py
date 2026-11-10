@@ -9,7 +9,7 @@ import numpy as np
 from .. import fonts
 from ..assistant import api, claude_code, cues, hotkey, screenshot, smartshot, speech, voice, whispercpp
 from ..assistant.hud import Hud
-from ..assistant.spinner import Spinner, starburst
+from ..assistant.spinner import starburst
 from ..assistant.settings import Settings
 from ..assistant.typer import TypeSchedule, capacity, fit_reply
 from ..widgets import ACCENT, FIELD, PANEL, TEXT, Slider
@@ -24,6 +24,8 @@ BAD = (255, 90, 100)
 
 
 ICON = 16
+MAX_SIZE = 28
+SETTLE = 0.7
 NOTCH = (ICON + 5, ICON + 4)
 
 ERROR_CODES = (
@@ -82,7 +84,11 @@ class ClaudeMode(Mode):
         self.spin_t0 = 0.0
         self.spin_bucket = -1
         self.frozen_angle = 0.0
-        self.spinner = None
+        self.stop_from = 0.0
+        self.stop_to = 45.0
+        self.reply_font = None
+        self.reply_lines = []
+        self.reply_starts = []
         self.auto_shots = False
         self.cps_cache = None
         self.downloading = False
@@ -121,7 +127,6 @@ class ClaudeMode(Mode):
         self.sound_var = tk.BooleanVar(value=s.get("sounds"))
         self.web_var = tk.BooleanVar(value=s.get("web_search"))
         self.hud_var = tk.BooleanVar(value=s.get("hud"))
-        self.spin_var = tk.BooleanVar(value=s.get("spinner"))
         self.font_var = tk.StringVar(value=default)
         self.ask_var = tk.StringVar()
 
@@ -161,7 +166,6 @@ class ClaudeMode(Mode):
             ("Let Claude search the web", self.web_var, "web_search"),
             ("Play sound cues", self.sound_var, "sounds"),
             ("Show the HUD card on screen", self.hud_var, "hud"),
-            ("Show a spinner top-left while it thinks", self.spin_var, "spinner"),
         ):
             ttk.Checkbutton(a2, text=text, variable=var, command=lambda k=key, v=var: self._flag(k, v)).pack(
                 anchor="w", pady=2)
@@ -305,8 +309,6 @@ class ClaudeMode(Mode):
             self._restart_listener()
         if key == "hud" and not var.get() and self.hud is not None:
             self.hud.hide_now()
-        if key == "spinner" and not var.get() and self.spinner is not None:
-            self.spinner.hide_now()
 
     def _shot_changed(self):
         self.settings.set("screenshot_mode", self.shot_var.get())
@@ -322,8 +324,6 @@ class ClaudeMode(Mode):
         self._save()
         if self.hud is not None:
             self.hud.configure(self.settings.get("hud_scale"), self.settings.get("hud_speed"))
-        if self.spinner is not None:
-            self.spinner.configure(self.settings.get("hud_scale"))
 
     def _font_path(self):
         return self.font_paths.get(self.font_var.get())
@@ -432,8 +432,6 @@ class ClaudeMode(Mode):
         self.active = True
         if self.hud is None:
             self.hud = Hud(self.app.root, self.settings.get("hud_scale"), self.settings.get("hud_speed"))
-        if self.spinner is None:
-            self.spinner = Spinner(self.app.root, self.settings.get("hud_scale"))
         self.display.reset_regions()
         self.want_send = True
         self._refresh_voice()
@@ -458,8 +456,6 @@ class ClaudeMode(Mode):
         self._stop_listener()
         if self.hud is not None:
             self.hud.hide_now()
-        if self.spinner is not None:
-            self.spinner.hide_now()
         self.phase = "idle"
         self.pending_reply = None
         self.pending_error = None
@@ -509,7 +505,7 @@ class ClaudeMode(Mode):
         self.frozen_angle = angle
         img = fonts.render_block(self.board_caption, fonts.load_font(self._font_path(), 12), DIM, BG)
         icon = starburst(angle, ICON)
-        img.paste(icon, (fonts.WIDTH - ICON - 3, 3), icon)
+        img.paste(icon, (3, 3), icon)
         self._push(img)
 
     def _screen_status(self, text, colour=DIM):
@@ -522,20 +518,6 @@ class ClaudeMode(Mode):
     def _hud(self, kind, seconds=None, detail=None):
         if self.hud is not None and self.settings.get("hud"):
             self.hud.show(kind, seconds, detail)
-        self._spin(kind)
-
-    def _spin(self, kind):
-        sp = self.spinner
-        if sp is None or not self.settings.get("spinner"):
-            return
-        if kind in ("screenshot", "thinking"):
-            sp.set("spin")
-        elif kind == "responding":
-            sp.set("pause")
-        elif kind == "done":
-            sp.set("pause", 4.0)
-        elif kind in ("error", "listening"):
-            sp.set("hide")
 
     def _error_hud(self, message):
         code, short = error_info(message)
@@ -620,8 +602,6 @@ class ClaudeMode(Mode):
         self._run(image, self.auto_shots and image is None)
 
     def _take_shot(self):
-        if self.spinner is not None:
-            self.spinner.hide_now()
         if self.hud is not None:
             self.hud.hide_now()
             self.app.root.update_idletasks()
@@ -666,8 +646,6 @@ class ClaudeMode(Mode):
         self.pending_error = None
         if self.hud is not None:
             self.hud.hide_now()
-        if self.spinner is not None:
-            self.spinner.hide_now()
         self._set_status("Cancelled. Nothing was sent.")
         self.reply_text = ""
         self._idle_screen()
@@ -686,15 +664,21 @@ class ClaudeMode(Mode):
             self.listener.pause(False)
 
     def _start_typing(self, text):
-        font = self._font()
-        fitted = fit_reply(text, font, notch=NOTCH)
+        base = self._font()
+        fitted = fit_reply(text, base, notch=NOTCH)
+        size, font = self._grow_font(fitted)
         self.board_caption = None
         self.reply_text = fitted
+        self.reply_font = font
+        self.reply_lines = fonts.layout(fitted, font, notch=NOTCH)[0]
+        self.reply_starts = self._line_starts(fitted, self.reply_lines)
         self.history.append(("user", self.question))
         self.history.append(("assistant", text))
         del self.history[:-12]
         self.schedule = TypeSchedule(fitted, self.settings.get("typing_cps"))
         self.type_start = time.perf_counter()
+        self.stop_from = self.frozen_angle
+        self.stop_to = self._neutral_after(self.frozen_angle)
         self.shown_key = None
         self.phase = "typing"
         self._cue("responding")
@@ -705,11 +689,51 @@ class ClaudeMode(Mode):
         self.reply_box.configure(state="disabled")
         self._set_status("Typing the reply onto the screen.")
 
-    def _render_reply(self, count, cursor):
-        text = self.reply_text[:count] + ("_" if cursor else "")
-        img = fonts.render_block(text, self._font(), FG, BG, "left", "top", notch=NOTCH)
-        icon = starburst(self.frozen_angle, ICON)
-        img.paste(icon, (fonts.WIDTH - ICON - 3, 3), icon)
+    def _grow_font(self, text):
+        lo = int(self.settings.get("font_size"))
+        path = self._font_path()
+        for size in range(MAX_SIZE, lo - 1, -1):
+            font = fonts.load_font(path, size)
+            lines, rows = fonts.layout(text, font, notch=NOTCH)
+            if len(lines) <= rows:
+                return size, font
+        return lo, fonts.load_font(path, lo)
+
+    @staticmethod
+    def _line_starts(text, lines):
+        starts = []
+        pos = 0
+        for line in lines:
+            at = text.find(line, pos) if line else pos
+            if at < 0:
+                at = pos
+            starts.append(at)
+            pos = at + len(line)
+        return starts
+
+    @staticmethod
+    def _neutral_after(angle):
+        target = (int((angle - 45.0) // 90.0) + 1) * 90.0 + 45.0
+        if target - angle < 25.0:
+            target += 90.0
+        return target
+
+    def _icon_angle(self, now):
+        t = min(1.0, max(0.0, (now - self.type_start) / SETTLE))
+        eased = 1 - (1 - t) ** 3
+        return self.stop_from + (self.stop_to - self.stop_from) * eased
+
+    def _render_reply(self, count, cursor, angle):
+        shown = []
+        for line, start in zip(self.reply_lines, self.reply_starts):
+            if count <= start and shown:
+                break
+            shown.append(self.reply_text[start:min(start + len(line), count)] if count > start else "")
+        if cursor and shown:
+            shown[-1] += "_"
+        img = fonts.draw_lines(shown, self.reply_font, FG, BG, notch=NOTCH)
+        icon = starburst(angle % 360.0, ICON)
+        img.paste(icon, (3, 3), icon)
         self._push(img)
 
     def tick(self, dt):
@@ -745,10 +769,11 @@ class ClaudeMode(Mode):
             n = self.schedule.count(now - self.type_start)
             done = n >= self.schedule.size
             cursor = (not done) and int((now - self.type_start) * 2.5) % 2 == 0
-            key = (n, cursor, done)
+            angle = self._icon_angle(now)
+            key = (n, cursor, done, int(angle))
             if key != self.shown_key:
                 self.shown_key = key
-                self._render_reply(n, cursor)
+                self._render_reply(n, cursor, angle)
             if done:
                 self.phase = "idle"
                 self._cue("done")
