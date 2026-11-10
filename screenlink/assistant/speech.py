@@ -10,6 +10,7 @@ import zipfile
 import numpy as np
 
 from .settings import config_dir
+from .smartshot import is_cancel
 
 MODEL_NAME = "vosk-model-small-en-us-0.15"
 MODEL_URL = "https://alphacephei.com/vosk/models/%s.zip" % MODEL_NAME
@@ -291,7 +292,7 @@ class WhisperListener(Listener):
                     if is_wake(normalise(text)):
                         rest = after_wake(normalise(text))
                         self.on_wake()
-                        if len(rest.split()) >= 3:
+                        if len(rest.split()) >= 3 or is_cancel(rest):
                             self.on_text(rest)
                             continue
                         self.mode = "dictate"

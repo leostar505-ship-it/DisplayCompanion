@@ -13,14 +13,17 @@ class AssistantError(Exception):
     pass
 
 
-def system_prompt(limit, has_image=True):
+def system_prompt(limit, has_image=True, allow_screen=False):
     text = (
         "You are Claude, answering through Display Companion, a tiny %d character text screen on the user's desk. "
         "Your whole reply must be at most %d characters. Use plain text only: no markdown, no bullet symbols, "
         "no emoji, no headings. Be direct and short, and answer the question first. If a screenshot is attached, "
         "it shows the user's screen right now." % (limit, limit)
     )
-    if not has_image:
+    if not has_image and allow_screen:
+        text += (" No screenshot is attached. If you cannot answer without seeing the user's screen, reply with exactly "
+                 "NEED_SCREEN and nothing else. Otherwise just answer.")
+    elif not has_image:
         text += " Screenshot mode is off: no screenshot is attached, so ignore any photos or images and do not try to look at the screen."
     return text
 
@@ -29,7 +32,7 @@ def user_text(question):
     return "%s\n\n%s" % (question.strip(), SUFFIX)
 
 
-def build_body(model, question, image_b64, limit, history):
+def build_body(model, question, image_b64, limit, history, allow_screen=False):
     content = []
     if image_b64:
         content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_b64}})
@@ -39,7 +42,7 @@ def build_body(model, question, image_b64, limit, history):
     return {
         "model": model,
         "max_tokens": max(96, min(1024, int(limit * 0.6))),
-        "system": system_prompt(limit, bool(image_b64)),
+        "system": system_prompt(limit, bool(image_b64), allow_screen),
         "messages": messages,
     }
 
@@ -81,10 +84,10 @@ def error_message(code, body):
     return ("API error %d: %s" % (code, detail)).strip().rstrip(":")[:160]
 
 
-def ask(key, model, question, image_b64, limit, history=(), timeout=60, opener=None):
+def ask(key, model, question, image_b64, limit, history=(), timeout=60, opener=None, allow_screen=False):
     if not key:
         raise AssistantError("No API key yet. Paste one in the Claude tab.")
-    body = json.dumps(build_body(model, question, image_b64, limit, history)).encode("utf-8")
+    body = json.dumps(build_body(model, question, image_b64, limit, history, allow_screen)).encode("utf-8")
     req = urllib.request.Request(URL, data=body, method="POST", headers={
         "content-type": "application/json",
         "x-api-key": key,

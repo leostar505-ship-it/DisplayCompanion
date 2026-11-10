@@ -7,7 +7,7 @@ from tkinter import ttk
 import numpy as np
 
 from .. import fonts
-from ..assistant import api, claude_code, cues, hotkey, screenshot, speech, voice, whispercpp
+from ..assistant import api, claude_code, cues, hotkey, screenshot, smartshot, speech, voice, whispercpp
 from ..assistant.hud import Hud
 from ..assistant.settings import Settings
 from ..assistant.typer import TypeSchedule, capacity, fit_reply
@@ -73,16 +73,18 @@ class ClaudeMode(Mode):
         self.shown_key = None
         self.last_img = None
         self.want_send = False
+        self.run_ctx = None
+        self.auto_shots = False
         self.cps_cache = None
         self.downloading = False
         self.grab = screenshot.grab
         self.ask = self._dispatch
         self.play = cues.play
 
-    def _dispatch(self, key, model, question, image, limit, history):
+    def _dispatch(self, key, model, question, image, limit, history, allow_screen=False):
         if self.settings.get("backend") == "claude_code":
-            return claude_code.ask(model, question, image, limit, history)
-        return api.ask(key, model, question, image, limit, history)
+            return claude_code.ask(model, question, image, limit, history, allow_screen=allow_screen)
+        return api.ask(key, model, question, image, limit, history, allow_screen=allow_screen)
 
     def build(self, parent):
         f = ttk.Frame(parent)
@@ -99,7 +101,7 @@ class ClaudeMode(Mode):
         self.model_var = tk.StringVar(value=s.get("model"))
         self.hotkey_var = tk.StringVar(value=s.get("hotkey"))
         self.wake_var = tk.BooleanVar(value=s.get("wake_word"))
-        self.shot_var = tk.BooleanVar(value=s.get("screenshot"))
+        self.shot_var = tk.StringVar(value=s.get("screenshot_mode"))
         self.sound_var = tk.BooleanVar(value=s.get("sounds"))
         self.hud_var = tk.BooleanVar(value=s.get("hud"))
         self.font_var = tk.StringVar(value=default)
@@ -138,12 +140,19 @@ class ClaudeMode(Mode):
         a2.grid(row=0, column=1, sticky="nw", padx=(0, 28))
         for text, var, key in (
             ("Listen for \"Hey Claude\"", self.wake_var, "wake_word"),
-            ("Send a screenshot with each question", self.shot_var, "screenshot"),
             ("Play sound cues", self.sound_var, "sounds"),
             ("Show the HUD card on screen", self.hud_var, "hud"),
         ):
             ttk.Checkbutton(a2, text=text, variable=var, command=lambda k=key, v=var: self._flag(k, v)).pack(
                 anchor="w", pady=2)
+
+        row = ttk.Frame(a2)
+        row.pack(anchor="w", pady=2)
+        ttk.Label(row, text="Screenshots").pack(side="left", padx=(0, 6))
+        shot_cb = ttk.Combobox(row, textvariable=self.shot_var, values=["auto", "always", "never"], width=8,
+                               state="readonly")
+        shot_cb.pack(side="left")
+        shot_cb.bind("<<ComboboxSelected>>", lambda e: self._shot_changed())
 
         a3 = ttk.Frame(ask_tab)
         a3.grid(row=0, column=2, sticky="nw")
@@ -276,6 +285,10 @@ class ClaudeMode(Mode):
             self._restart_listener()
         if key == "hud" and not var.get() and self.hud is not None:
             self.hud.hide_now()
+
+    def _shot_changed(self):
+        self.settings.set("screenshot_mode", self.shot_var.get())
+        self._save()
 
     def _cps_changed(self):
         self.settings.set("typing_cps", int(self.cps.get()))
@@ -484,7 +497,7 @@ class ClaudeMode(Mode):
             if self._auto_download():
                 self._set_status("Downloading the voice models first (one-off), then press %s again." %
                                  self.settings.get("hotkey"))
-                self._hud("thinking", 2.5)
+                self._hud("thinking", 4.0, ("Getting voice models", "Press again soon"))
                 return
             message = "Download the voice models first (button in Setup). You can still type a question."
             code = self._error_hud(message)
@@ -528,42 +541,77 @@ class ClaudeMode(Mode):
         self.question = question
         self.pending_reply = None
         self.pending_error = None
+        mode = self.settings.get("screenshot_mode")
+        if mode == "always":
+            take = True
+        elif mode == "never":
+            take = False
+        else:
+            take = smartshot.wants_screen(question)
+        self.run_ctx = (key, self.settings.get("model"), question, self.limit(), list(self.history))
+        self.auto_shots = mode == "auto"
         image = None
-        if self.settings.get("screenshot"):
-            if self.hud is not None:
-                self.hud.hide_now()
-                self.app.root.update_idletasks()
-                time.sleep(0.12)
-            try:
-                image = self.grab()
-            except Exception as exc:
-                self._fail("Could not take a screenshot: %s" % exc)
+        if take:
+            image = self._take_shot()
+            if image is None:
                 return
-            dur = 5.9 / max(0.5, self.settings.get("hud_speed"))
-            self.shot_until = time.perf_counter() + dur
-            self.phase = "shot"
-            self._cue("screenshot")
-            self._hud("screenshot", dur)
-            self._screen_status("Looking at your screen...")
         else:
             self.phase = "thinking"
             self._cue("thinking")
             self._hud("thinking")
             self._screen_status("Thinking...")
         self._set_status("Asking Claude: %s" % question)
-        model = self.settings.get("model")
-        limit = self.limit()
-        history = list(self.history)
+        self._run(image, self.auto_shots and image is None)
+
+    def _take_shot(self):
+        if self.hud is not None:
+            self.hud.hide_now()
+            self.app.root.update_idletasks()
+            time.sleep(0.12)
+        try:
+            image = self.grab()
+        except Exception as exc:
+            self._fail("Could not take a screenshot: %s" % exc)
+            return None
+        dur = 5.9 / max(0.5, self.settings.get("hud_speed"))
+        self.shot_until = time.perf_counter() + dur
+        self.phase = "shot"
+        self._cue("screenshot")
+        self._hud("screenshot", dur)
+        self._screen_status("Looking at your screen...")
+        return image
+
+    def _run(self, image, allow_screen):
+        key, model, question, limit, history = self.run_ctx
 
         def work():
             try:
-                self.events.put(("reply", self.ask(key, model, question, image, limit, history)))
+                if allow_screen:
+                    reply = self.ask(key, model, question, image, limit, history, allow_screen=True)
+                else:
+                    reply = self.ask(key, model, question, image, limit, history)
+                if allow_screen and smartshot.wants_more(reply):
+                    self.events.put(("need_screen",))
+                else:
+                    self.events.put(("reply", reply))
             except api.AssistantError as exc:
                 self.events.put(("error", str(exc)))
             except Exception as exc:
                 self.events.put(("error", "Something broke: %s" % exc))
 
         threading.Thread(target=work, daemon=True).start()
+
+    def _cancel(self):
+        self.phase = "idle"
+        self.pending_reply = None
+        self.pending_error = None
+        if self.hud is not None:
+            self.hud.hide_now()
+        self._set_status("Cancelled. Nothing was sent.")
+        self.reply_text = ""
+        self._idle_screen()
+        if self.listener is not None:
+            self.listener.pause(False)
 
     def _fail(self, message):
         self.phase = "idle"
@@ -659,10 +707,18 @@ class ClaudeMode(Mode):
                     self._set_status("Listening... speak now.")
             elif kind == "text":
                 if self.phase == "listening":
-                    if event[1]:
+                    if event[1] and smartshot.is_cancel(event[1]):
+                        self._cancel()
+                    elif event[1]:
                         self.submit(event[1])
                     else:
                         self._fail("I didn't catch that.")
+            elif kind == "need_screen":
+                if self.phase in ("shot", "thinking"):
+                    image = self._take_shot()
+                    if image is not None:
+                        self._set_status("Claude wants to see your screen. Looking...")
+                        self._run(image, False)
             elif kind == "reply":
                 if self.phase in ("shot", "thinking"):
                     self.pending_reply = event[1]

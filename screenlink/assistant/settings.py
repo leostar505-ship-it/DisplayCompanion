@@ -8,7 +8,7 @@ DEFAULTS = {
     "model": "claude-sonnet-5-5",
     "hotkey": "ctrl+alt+c",
     "wake_word": True,
-    "screenshot": True,
+    "screenshot_mode": "auto",
     "sounds": True,
     "hud": True,
     "hud_scale": 1.5,
@@ -42,6 +42,8 @@ class Settings:
         except (OSError, ValueError):
             return
         if isinstance(raw, dict):
+            if "screenshot_mode" not in raw and raw.get("screenshot") is False:
+                raw["screenshot_mode"] = "never"
             for key in DEFAULTS:
                 if key in raw and type(raw[key]) is type(DEFAULTS[key]):
                     self.data[key] = raw[key]

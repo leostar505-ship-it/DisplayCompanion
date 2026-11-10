@@ -31,7 +31,7 @@ def alias(model):
     return model or "sonnet"
 
 
-def build_prompt(question, limit, history, has_image):
+def build_prompt(question, limit, history, has_image, allow_screen=False):
     parts = [
         "You are Claude, answering through Display Companion, a tiny text screen on the user's desk. "
         "Your whole reply must be at most %d characters. Plain text only: no markdown, no bullet symbols, "
@@ -41,6 +41,9 @@ def build_prompt(question, limit, history, has_image):
     if has_image:
         parts.append("The user's screen right now is in the image file screen.jpg in the current folder. "
                      "Read it before answering.")
+    elif allow_screen:
+        parts.append("No screenshot is attached. If you cannot answer without seeing the user's screen, reply with "
+                     "exactly NEED_SCREEN and nothing else. Otherwise just answer.")
     else:
         parts.append("Screenshot mode is off: no screenshot is attached, so ignore any photos or images and "
                      "do not try to look at the screen.")
@@ -58,7 +61,7 @@ def default_runner(cmd, prompt, cwd, timeout):
                           cwd=cwd, timeout=timeout, creationflags=flags)
 
 
-def ask(model, question, image_b64, limit, history=(), timeout=TIMEOUT, runner=None, exe=None):
+def ask(model, question, image_b64, limit, history=(), timeout=TIMEOUT, runner=None, exe=None, allow_screen=False):
     exe = exe or find()
     if not exe:
         raise AssistantError("Claude Code was not found. Install it, run `claude` once to sign in, then try again.")
@@ -68,7 +71,7 @@ def ask(model, question, image_b64, limit, history=(), timeout=TIMEOUT, runner=N
             with open(os.path.join(folder, "screen.jpg"), "wb") as fh:
                 fh.write(base64.b64decode(image_b64))
             cmd += ["--allowedTools", "Read"]
-        prompt = build_prompt(question, limit, history, bool(image_b64))
+        prompt = build_prompt(question, limit, history, bool(image_b64), allow_screen)
         try:
             res = (runner or default_runner)(cmd, prompt, folder, timeout)
         except subprocess.TimeoutExpired:

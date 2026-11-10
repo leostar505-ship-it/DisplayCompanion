@@ -112,6 +112,30 @@ assert mode.phase == "idle"
 pump(0.3)
 shot("claude_error")
 
+mode.settings.set("screenshot_mode", "auto")
+asked = []
+
+
+def fake_ask(key, model, q, image, limit, history, allow_screen=False):
+    asked.append((image is not None, allow_screen))
+    return "NEED_SCREEN" if image is None else "It is a desktop."
+
+
+mode.ask = fake_ask
+mode.ask_var.set("tell me something")
+mode._ask_typed()
+deadline = time.time() + 25
+while time.time() < deadline and not (len(asked) == 2 and mode.phase == "idle"):
+    pump(0.05)
+assert asked == [(False, True), (True, False)], asked
+assert mode.reply_text.startswith("It is a desktop")
+
+mode.phase = "listening"
+mode.events.put(("text", "Never mind"))
+pump(0.3)
+assert mode.phase == "idle" and "Cancelled" in mode.status.cget("text"), mode.status.cget("text")
+assert len(asked) == 2
+
 s.set("api_key", "")
 mode.settings.data["api_key"] = ""
 mode.settings.set("backend", "api")
