@@ -99,6 +99,7 @@ assert mode.reply_text.startswith("Your screen shows")
 pump(0.3)
 shot("claude_done")
 assert mode.hud.current_kind() == "done", mode.hud.current_kind()
+assert mode.spinner.state == "pause", mode.spinner.state
 
 mode.ask = lambda *a, **k: (_ for _ in ()).throw(api.AssistantError("The API key was rejected."))
 cues_played.clear()

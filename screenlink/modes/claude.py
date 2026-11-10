@@ -9,6 +9,7 @@ import numpy as np
 from .. import fonts
 from ..assistant import api, claude_code, cues, hotkey, screenshot, smartshot, speech, voice, whispercpp
 from ..assistant.hud import Hud
+from ..assistant.spinner import Spinner
 from ..assistant.settings import Settings
 from ..assistant.typer import TypeSchedule, capacity, fit_reply
 from ..widgets import ACCENT, FIELD, PANEL, TEXT, Slider
@@ -74,6 +75,7 @@ class ClaudeMode(Mode):
         self.last_img = None
         self.want_send = False
         self.run_ctx = None
+        self.spinner = None
         self.auto_shots = False
         self.cps_cache = None
         self.downloading = False
@@ -112,6 +114,7 @@ class ClaudeMode(Mode):
         self.sound_var = tk.BooleanVar(value=s.get("sounds"))
         self.web_var = tk.BooleanVar(value=s.get("web_search"))
         self.hud_var = tk.BooleanVar(value=s.get("hud"))
+        self.spin_var = tk.BooleanVar(value=s.get("spinner"))
         self.font_var = tk.StringVar(value=default)
         self.ask_var = tk.StringVar()
 
@@ -151,6 +154,7 @@ class ClaudeMode(Mode):
             ("Let Claude search the web", self.web_var, "web_search"),
             ("Play sound cues", self.sound_var, "sounds"),
             ("Show the HUD card on screen", self.hud_var, "hud"),
+            ("Show a spinner top-left while it thinks", self.spin_var, "spinner"),
         ):
             ttk.Checkbutton(a2, text=text, variable=var, command=lambda k=key, v=var: self._flag(k, v)).pack(
                 anchor="w", pady=2)
@@ -294,6 +298,8 @@ class ClaudeMode(Mode):
             self._restart_listener()
         if key == "hud" and not var.get() and self.hud is not None:
             self.hud.hide_now()
+        if key == "spinner" and not var.get() and self.spinner is not None:
+            self.spinner.hide_now()
 
     def _shot_changed(self):
         self.settings.set("screenshot_mode", self.shot_var.get())
@@ -309,6 +315,8 @@ class ClaudeMode(Mode):
         self._save()
         if self.hud is not None:
             self.hud.configure(self.settings.get("hud_scale"), self.settings.get("hud_speed"))
+        if self.spinner is not None:
+            self.spinner.configure(self.settings.get("hud_scale"))
 
     def _font_path(self):
         return self.font_paths.get(self.font_var.get())
@@ -417,6 +425,8 @@ class ClaudeMode(Mode):
         self.active = True
         if self.hud is None:
             self.hud = Hud(self.app.root, self.settings.get("hud_scale"), self.settings.get("hud_speed"))
+        if self.spinner is None:
+            self.spinner = Spinner(self.app.root, self.settings.get("hud_scale"))
         self.display.reset_regions()
         self.want_send = True
         self._refresh_voice()
@@ -441,6 +451,8 @@ class ClaudeMode(Mode):
         self._stop_listener()
         if self.hud is not None:
             self.hud.hide_now()
+        if self.spinner is not None:
+            self.spinner.hide_now()
         self.phase = "idle"
         self.pending_reply = None
         self.pending_error = None
@@ -489,6 +501,20 @@ class ClaudeMode(Mode):
     def _hud(self, kind, seconds=None, detail=None):
         if self.hud is not None and self.settings.get("hud"):
             self.hud.show(kind, seconds, detail)
+        self._spin(kind)
+
+    def _spin(self, kind):
+        sp = self.spinner
+        if sp is None or not self.settings.get("spinner"):
+            return
+        if kind in ("screenshot", "thinking"):
+            sp.set("spin")
+        elif kind == "responding":
+            sp.set("pause")
+        elif kind == "done":
+            sp.set("pause", 4.0)
+        elif kind in ("error", "listening"):
+            sp.set("hide")
 
     def _error_hud(self, message):
         code, short = error_info(message)
@@ -573,6 +599,8 @@ class ClaudeMode(Mode):
         self._run(image, self.auto_shots and image is None)
 
     def _take_shot(self):
+        if self.spinner is not None:
+            self.spinner.hide_now()
         if self.hud is not None:
             self.hud.hide_now()
             self.app.root.update_idletasks()
@@ -617,6 +645,8 @@ class ClaudeMode(Mode):
         self.pending_error = None
         if self.hud is not None:
             self.hud.hide_now()
+        if self.spinner is not None:
+            self.spinner.hide_now()
         self._set_status("Cancelled. Nothing was sent.")
         self.reply_text = ""
         self._idle_screen()
