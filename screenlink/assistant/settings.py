@@ -16,6 +16,11 @@ DEFAULTS = {
     "font": "",
     "font_size": 11,
     "typing_cps": 32,
+    "voice_engine": "auto",
+    "dictation_model": "large-v3-q5_0",
+    "wake_model": "small.en",
+    "use_gpu": True,
+    "auto_download": True,
 }
 
 

@@ -111,3 +111,7 @@ The firmware tests compile `ScreenLink.ino` with stand-in Arduino libraries (nee
 ## One-file installer from GitHub
 
 Push this folder to a GitHub repo, then create a tag such as `v1.0` (or run the "Build installer" workflow by hand under Actions). GitHub builds on Windows and attaches `DisplayCompanion-Setup.exe` to the release (or to the run as an artifact). That single exe installs to Program Files and adds the desktop shortcut.
+
+## Voice engines
+
+Display Companion uses Whisper (whisper.cpp built with Vulkan, so it runs on AMD, NVIDIA and Intel GPUs) for dictation and the "Hey Claude" wake word. The models download by themselves the first time they are needed: a small one for the wake word and Large V3 (quantised, about 1 GB) for dictation. If the Whisper program is not in the build, or you pick "vosk" in Setup, it falls back to the small offline Vosk model.

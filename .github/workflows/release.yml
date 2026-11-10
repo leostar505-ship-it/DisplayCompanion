@@ -22,12 +22,28 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt pyinstaller
 
+      - name: Build Whisper with Vulkan
+        id: whisper
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          choco install vulkan-sdk -y --no-progress
+          $sdk = (Get-ChildItem "C:\VulkanSDK" -Directory | Sort-Object Name -Descending | Select-Object -First 1).FullName
+          $env:VULKAN_SDK = $sdk
+          $env:Path = "$sdk\Bin;$env:Path"
+          git clone --depth 1 --branch v1.9.5 https://github.com/ggml-org/whisper.cpp whisper-src
+          cmake -S whisper-src -B whisper-build -DGGML_VULKAN=1 -DBUILD_SHARED_LIBS=OFF -DWHISPER_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build whisper-build --config Release --target whisper-server -j 4
+          New-Item -ItemType Directory -Force vendor/whisper | Out-Null
+          $exe = Get-ChildItem whisper-build -Recurse -Filter whisper-server.exe | Select-Object -First 1
+          Copy-Item $exe.FullName vendor/whisper/whisper-server.exe
+
       - name: Build app
-        run: >
-          python -m PyInstaller --noconfirm --windowed --name DisplayCompanion
-          --icon assets/icon.ico --add-data "assets;assets"
-          --hidden-import pyaudiowpatch --collect-all vosk --hidden-import serial.tools.list_ports
-          run_screenlink.py
+        shell: pwsh
+        run: |
+          $extra = @()
+          if (Test-Path vendor/whisper/whisper-server.exe) { $extra = @("--add-binary", "vendor/whisper/whisper-server.exe;whisper") }
+          python -m PyInstaller --noconfirm --windowed --name DisplayCompanion --icon assets/icon.ico --add-data "assets;assets" --hidden-import pyaudiowpatch --collect-all vosk --hidden-import serial.tools.list_ports @extra run_screenlink.py
 
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress

@@ -7,7 +7,7 @@ from tkinter import ttk
 import numpy as np
 
 from .. import fonts
-from ..assistant import api, claude_code, cues, hotkey, screenshot, speech
+from ..assistant import api, claude_code, cues, hotkey, screenshot, speech, voice, whispercpp
 from ..assistant.hud import Hud
 from ..assistant.settings import Settings
 from ..assistant.typer import TypeSchedule, capacity, fit_reply
@@ -204,8 +204,30 @@ class ClaudeMode(Mode):
         row.pack(anchor="w", pady=2)
         self.voice_label = ttk.Label(row, text="", style="Muted.TLabel", wraplength=230, justify="left")
         self.voice_label.pack(side="left")
-        self.voice_btn = ttk.Button(row, text="Download voice model", command=self._download)
+        self.voice_btn = ttk.Button(row, text="Download voice models", command=self._download)
         self.voice_btn.pack(side="left", padx=8)
+        row = ttk.Frame(s2)
+        row.pack(anchor="w", pady=2)
+        self.engine_var = tk.StringVar(value=s.get("voice_engine"))
+        self.dict_var = tk.StringVar(value=s.get("dictation_model"))
+        self.wake_model_var = tk.StringVar(value=s.get("wake_model"))
+        self.gpu_var = tk.BooleanVar(value=s.get("use_gpu"))
+        ttk.Label(row, text="Voice engine", width=14).pack(side="left")
+        ttk.Combobox(row, textvariable=self.engine_var, values=["auto", "vosk"], width=10, state="readonly").pack(side="left")
+        row = ttk.Frame(s2)
+        row.pack(anchor="w", pady=2)
+        ttk.Label(row, text="Dictation", width=14).pack(side="left")
+        ttk.Combobox(row, textvariable=self.dict_var, values=whispercpp.DICTATION_CHOICES, width=20,
+                     state="readonly").pack(side="left")
+        row = ttk.Frame(s2)
+        row.pack(anchor="w", pady=2)
+        ttk.Label(row, text="Wake word", width=14).pack(side="left")
+        ttk.Combobox(row, textvariable=self.wake_model_var, values=whispercpp.WAKE_CHOICES, width=20,
+                     state="readonly").pack(side="left")
+        ttk.Checkbutton(s2, text="Use the GPU for Whisper", variable=self.gpu_var, command=self._voice_changed).pack(
+            anchor="w", pady=2)
+        for var in (self.engine_var, self.dict_var, self.wake_model_var):
+            var.trace_add("write", lambda *a: self._voice_changed())
         self.hud_size = Slider(s2, "HUD size", 1.0, 2.5, s.get("hud_scale"), command=self._hud_changed, fmt="{:.1f}x")
         self.hud_size.pack(anchor="w", pady=2)
         self.hud_speed = Slider(s2, "HUD animation", 1.0, 2.5, s.get("hud_speed"), command=self._hud_changed,
@@ -289,11 +311,13 @@ class ClaudeMode(Mode):
                             self.limit())
 
     def _refresh_voice(self):
-        if speech.have_model():
-            self.voice_label.configure(text="Voice model installed")
+        if self.downloading:
+            return
+        if voice.have_all(self.settings):
+            self.voice_label.configure(text=voice.describe(self.settings))
             self.voice_btn.configure(state="disabled")
         else:
-            self.voice_label.configure(text="Voice needs a one-off 40 MB download")
+            self.voice_label.configure(text="Voice models will download (%d MB)" % voice.missing_mb(self.settings))
             self.voice_btn.configure(state="normal")
 
     def _download(self):
@@ -301,16 +325,35 @@ class ClaudeMode(Mode):
             return
         self.downloading = True
         self.voice_btn.configure(state="disabled")
-        self.voice_label.configure(text="Downloading... 0%")
+        self.voice_label.configure(text="Downloading voice models... 0%")
+        self._set_status("Downloading the voice models (one-off). Typing a question still works.")
+        settings = self.settings
 
         def work():
             try:
-                speech.download_model(lambda f: self.events.put(("model_progress", f)))
+                voice.download_missing(settings, lambda f, label, i, n: self.events.put(("model_progress", (f, label, i, n))))
                 self.events.put(("model_done", ""))
             except Exception as exc:
                 self.events.put(("model_done", str(exc) or exc.__class__.__name__))
 
         threading.Thread(target=work, daemon=True).start()
+
+    def _auto_download(self):
+        if self.settings.get("auto_download") and not self.downloading and not voice.have_all(self.settings):
+            self._download()
+            return True
+        return self.downloading
+
+    def _voice_changed(self):
+        self.settings.set("voice_engine", self.engine_var.get())
+        self.settings.set("dictation_model", self.dict_var.get())
+        self.settings.set("wake_model", self.wake_model_var.get())
+        self.settings.set("use_gpu", bool(self.gpu_var.get()))
+        self._save()
+        self._restart_listener()
+        self._refresh_voice()
+        if self.active:
+            self._auto_download()
 
     def _apply_hotkey(self):
         spec = self.hotkey_var.get().strip()
@@ -327,13 +370,14 @@ class ClaudeMode(Mode):
             self.hotkey_label.configure(text=self.hotkey.error)
 
     def _start_listener(self):
-        if self.listener is not None or not speech.have_model():
+        if self.listener is not None or not voice.have_all(self.settings):
             return
-        self.listener = speech.Listener(
+        self.listener = voice.make_listener(
+            self.settings,
             lambda: self.events.put(("wake",)),
             lambda text: self.events.put(("text", text)),
             lambda msg: self.events.put(("status", msg)),
-            wake_enabled=self.wake_var.get(),
+            self.wake_var.get(),
         )
         self.listener.start()
 
@@ -357,12 +401,14 @@ class ClaudeMode(Mode):
         self._refresh_fits()
         self._refresh_backend()
         self._start_hotkey()
-        if self.wake_var.get():
+        if self._auto_download():
+            self._set_status("Downloading the voice models (one-off). Typing a question works meanwhile.")
+        elif self.wake_var.get():
             self._start_listener()
             if self.listener is not None:
                 self._set_status("Listening for \"Hey Claude\". The microphone is live while this tab is open.")
             else:
-                self._set_status("Download the voice model to use \"Hey Claude\". The hotkey and Ask box work now.")
+                self._set_status("Voice models are missing. The hotkey and Ask box work now.")
         else:
             self._set_status("Ready. Press %s or type a question." % self.settings.get("hotkey"))
         self._idle_screen()
@@ -434,8 +480,13 @@ class ClaudeMode(Mode):
     def begin_listen(self, request):
         if self.phase != "idle":
             return
-        if not speech.have_model():
-            message = "Download the voice model first (button on the left). You can still type a question."
+        if not voice.have_all(self.settings):
+            if self._auto_download():
+                self._set_status("Downloading the voice models first (one-off), then press %s again." %
+                                 self.settings.get("hotkey"))
+                self._hud("thinking", 2.5)
+                return
+            message = "Download the voice models first (button in Setup). You can still type a question."
             code = self._error_hud(message)
             self._set_status("%s: %s" % (code, message))
             return
@@ -621,7 +672,8 @@ class ClaudeMode(Mode):
             elif kind == "status":
                 self._set_status(event[1])
             elif kind == "model_progress":
-                self.voice_label.configure(text="Downloading... %d%%" % int(event[1] * 100))
+                frac, label, index, total = event[1]
+                self.voice_label.configure(text="Downloading %s (%d of %d)... %d%%" % (label, index, total, int(frac * 100)))
             elif kind == "model_done":
                 self.downloading = False
                 if event[1]:
@@ -629,6 +681,9 @@ class ClaudeMode(Mode):
                     self.voice_btn.configure(state="normal")
                 else:
                     self._refresh_voice()
-                    if self.active and self.wake_var.get():
+                    if self.active:
                         self._start_listener()
-                        self._set_status("Listening for \"Hey Claude\".")
+                        if self.wake_var.get():
+                            self._set_status("Listening for \"Hey Claude\".")
+                        else:
+                            self._set_status("Voice models ready. Press %s to talk." % self.settings.get("hotkey"))

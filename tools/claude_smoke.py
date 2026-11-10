@@ -1,3 +1,4 @@
+import os
 import pathlib
 import subprocess
 import sys
@@ -17,7 +18,9 @@ out_dir.mkdir(parents=True, exist_ok=True)
 
 root = tk.Tk()
 app = App.__new__(App)
+os.environ["APPDATA"] = tempfile.mkdtemp()
 app.assistant_settings = Settings(pathlib.Path(tempfile.mkdtemp()) / "a.json")
+app.assistant_settings.set("auto_download", False)
 App.__init__(app, root)
 root.geometry("+0+0")
 
@@ -123,7 +126,7 @@ assert cues_played == ["error"], cues_played
 mode.listen_now()
 pump(0.1)
 assert mode.phase == "idle"
-assert "voice model" in mode.status.cget("text").lower()
+assert "voice model" in mode.status.cget("text").lower(), mode.status.cget("text")
 
 app.select_mode("Text")
 assert not mode.active

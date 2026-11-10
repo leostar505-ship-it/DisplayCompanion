@@ -222,3 +222,99 @@ class Listener:
                     self.on_text(final)
         except Exception as exc:
             self.on_status("Microphone problem: %s" % exc)
+
+
+def after_wake(text):
+    words = text.replace(",", " ").replace(".", " ").replace("!", " ").replace("?", " ").split()
+    for i, w in enumerate(words):
+        if w.lower() in NAMES:
+            return " ".join(words[i + 1:]).strip()
+    return ""
+
+
+def normalise(text):
+    return "".join(ch if ch.isalnum() or ch.isspace() or ch in "'," else " " for ch in text.lower())
+
+
+class WhisperListener(Listener):
+    def __init__(self, on_wake, on_text, on_status, engine, wake_enabled=True, source=None):
+        super().__init__(on_wake, on_text, on_status, wake_enabled=wake_enabled, source=source)
+        self.engine = engine
+
+    def _run(self):
+        from .whispercpp import Segmenter, WhisperError
+        engine = self.engine
+        try:
+            self.on_status("Loading the voice engine...")
+            if self.wake_enabled:
+                engine.preload_wake()
+            else:
+                engine.preload_dictation()
+            self.on_status("Voice engine ready.")
+        except Exception as exc:
+            self.on_status("Voice engine problem: %s" % exc)
+            return
+        wake_seg = Segmenter(end_quiet=3, min_voiced=2, max_chunks=20)
+        talk_seg = Segmenter(end_quiet=4, min_voiced=2, max_chunks=int(MAX_DICTATION / 0.25))
+        started = 0.0
+        deaf_until = 0.0
+        last_maintain = 0.0
+        try:
+            chunks = self.source if self.source is not None else self._chunks()
+            for data in chunks:
+                if self.stop_flag.is_set():
+                    break
+                now = time.monotonic()
+                if now - last_maintain > 30:
+                    last_maintain = now
+                    engine.maintain()
+                if self.paused or now < deaf_until:
+                    continue
+                if self.mode == "wake":
+                    if self.dictate_requested:
+                        self.dictate_requested = False
+                        self.mode = "dictate"
+                        talk_seg.reset()
+                        started = now
+                        deaf_until = now + DEAF_AFTER_WAKE
+                        continue
+                    if not self.wake_enabled:
+                        continue
+                    seg = wake_seg.feed(data)
+                    if seg is None:
+                        continue
+                    try:
+                        text = engine.wake(seg)
+                    except WhisperError as exc:
+                        self.on_status("Voice engine problem: %s" % exc)
+                        continue
+                    if is_wake(normalise(text)):
+                        rest = after_wake(normalise(text))
+                        self.on_wake()
+                        if len(rest.split()) >= 3:
+                            self.on_text(rest)
+                            continue
+                        self.mode = "dictate"
+                        talk_seg.reset()
+                        started = time.monotonic()
+                        deaf_until = started + DEAF_AFTER_WAKE
+                    continue
+                seg = talk_seg.feed(data)
+                if seg is None:
+                    if not talk_seg.active and now - started > LISTEN_TIMEOUT:
+                        self.mode = "wake"
+                        wake_seg.reset()
+                        self.on_text("")
+                    continue
+                try:
+                    final = engine.dictate(seg)
+                except WhisperError as exc:
+                    self.on_status("Voice engine problem: %s" % exc)
+                    final = ""
+                self.mode = "wake"
+                wake_seg.reset()
+                self.on_text(final)
+        except Exception as exc:
+            self.on_status("Microphone problem: %s" % exc)
+        finally:
+            engine.close()
