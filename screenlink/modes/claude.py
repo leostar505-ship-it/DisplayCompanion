@@ -83,7 +83,8 @@ class ClaudeMode(Mode):
 
     def _dispatch(self, key, model, question, image, limit, history, allow_screen=False):
         if self.settings.get("backend") == "claude_code":
-            return claude_code.ask(model, question, image, limit, history, allow_screen=allow_screen)
+            return claude_code.ask(model, question, image, limit, history, allow_screen=allow_screen,
+                                   web=bool(self.settings.get("web_search")))
         return api.ask(key, model, question, image, limit, history, allow_screen=allow_screen)
 
     def build(self, parent):
@@ -103,6 +104,7 @@ class ClaudeMode(Mode):
         self.wake_var = tk.BooleanVar(value=s.get("wake_word"))
         self.shot_var = tk.StringVar(value=s.get("screenshot_mode"))
         self.sound_var = tk.BooleanVar(value=s.get("sounds"))
+        self.web_var = tk.BooleanVar(value=s.get("web_search"))
         self.hud_var = tk.BooleanVar(value=s.get("hud"))
         self.font_var = tk.StringVar(value=default)
         self.ask_var = tk.StringVar()
@@ -140,6 +142,7 @@ class ClaudeMode(Mode):
         a2.grid(row=0, column=1, sticky="nw", padx=(0, 28))
         for text, var, key in (
             ("Listen for \"Hey Claude\"", self.wake_var, "wake_word"),
+            ("Let Claude search the web", self.web_var, "web_search"),
             ("Play sound cues", self.sound_var, "sounds"),
             ("Show the HUD card on screen", self.hud_var, "hud"),
         ):

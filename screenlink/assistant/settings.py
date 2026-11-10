@@ -10,6 +10,7 @@ DEFAULTS = {
     "wake_word": True,
     "screenshot_mode": "auto",
     "sounds": True,
+    "web_search": True,
     "hud": True,
     "hud_scale": 1.5,
     "hud_speed": 1.6,

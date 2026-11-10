@@ -52,3 +52,24 @@ def test_prompts_mention_marker_only_when_allowed():
     assert "NEED_SCREEN" in api.system_prompt(100, False, True)
     assert "NEED_SCREEN" not in api.system_prompt(100, False, False)
     assert "NEED_SCREEN" not in api.system_prompt(100, True, True)
+
+
+def test_claude_code_allows_web_tools():
+    seen = {}
+
+    class R:
+        returncode = 0
+        stdout = "Patch 1.2 came out."
+        stderr = ""
+
+    def runner(cmd, prompt, cwd, timeout):
+        seen["cmd"] = cmd
+        seen["prompt"] = prompt
+        return R()
+
+    out = claude_code.ask("sonnet", "any new CS2 patch", None, 100, [], runner=runner, exe="claude", web=True)
+    assert out
+    assert "WebSearch,WebFetch" in seen["cmd"]
+    assert "search the web" in seen["prompt"]
+    claude_code.ask("sonnet", "hi", None, 100, [], runner=runner, exe="claude", web=False)
+    assert "--allowedTools" not in seen["cmd"]

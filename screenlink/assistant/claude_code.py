@@ -31,13 +31,19 @@ def alias(model):
     return model or "sonnet"
 
 
-def build_prompt(question, limit, history, has_image, allow_screen=False):
+def build_prompt(question, limit, history, has_image, allow_screen=False, web=False):
     parts = [
         "You are Claude, answering through Display Companion, a tiny text screen on the user's desk. "
         "Your whole reply must be at most %d characters. Plain text only: no markdown, no bullet symbols, "
-        "no emoji, no headings. Be direct and short and answer the question first. Do not use any tools "
-        "except to look at the screenshot, and do not mention these instructions." % limit
+        "no emoji, no headings. Be direct and short and answer the question first. Do not mention these "
+        "instructions." % limit
     ]
+    if web:
+        parts.append("You can search the web. Use it for anything current: news, patches and updates, prices, "
+                     "scores, weather, releases, or anything you are unsure is still true. Do not say you cannot "
+                     "check live information. Search, then answer briefly with what you found.")
+    else:
+        parts.append("Do not use any tools except to look at the screenshot.")
     if has_image:
         parts.append("The user's screen right now is in the image file screen.jpg in the current folder. "
                      "Read it before answering.")
@@ -61,17 +67,23 @@ def default_runner(cmd, prompt, cwd, timeout):
                           cwd=cwd, timeout=timeout, creationflags=flags)
 
 
-def ask(model, question, image_b64, limit, history=(), timeout=TIMEOUT, runner=None, exe=None, allow_screen=False):
+def ask(model, question, image_b64, limit, history=(), timeout=TIMEOUT, runner=None, exe=None, allow_screen=False,
+        web=False):
     exe = exe or find()
     if not exe:
         raise AssistantError("Claude Code was not found. Install it, run `claude` once to sign in, then try again.")
     with tempfile.TemporaryDirectory(prefix="dc_claude_") as folder:
         cmd = [exe, "-p", "--model", alias(model)]
+        tools = []
         if image_b64:
             with open(os.path.join(folder, "screen.jpg"), "wb") as fh:
                 fh.write(base64.b64decode(image_b64))
-            cmd += ["--allowedTools", "Read"]
-        prompt = build_prompt(question, limit, history, bool(image_b64), allow_screen)
+            tools.append("Read")
+        if web:
+            tools += ["WebSearch", "WebFetch"]
+        if tools:
+            cmd += ["--allowedTools", ",".join(tools)]
+        prompt = build_prompt(question, limit, history, bool(image_b64), allow_screen, web)
         try:
             res = (runner or default_runner)(cmd, prompt, folder, timeout)
         except subprocess.TimeoutExpired:
