@@ -186,7 +186,7 @@ def draw_lines(lines, font, fg, bg, margin=2, spacing=2, notch=None):
     count = max(1, -(-(notch[1] - margin) // pitch)) if notch else 0
     y = margin
     for i, line in enumerate(lines):
-        x = margin + (notch[0] if notch and i < count else 0)
+        x = margin
         draw.text((x, y - top), line, fill=fg, font=font)
         y += pitch
     return img

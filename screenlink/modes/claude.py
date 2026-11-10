@@ -24,7 +24,6 @@ BAD = (255, 90, 100)
 
 
 ICON = 16
-MAX_SIZE = 28
 SETTLE = 0.7
 NOTCH = (ICON + 5, ICON + 4)
 
@@ -505,7 +504,7 @@ class ClaudeMode(Mode):
         self.frozen_angle = angle
         img = fonts.render_block(self.board_caption, fonts.load_font(self._font_path(), 12), DIM, BG)
         icon = starburst(angle, ICON)
-        img.paste(icon, (3, 3), icon)
+        img.paste(icon, (fonts.WIDTH - ICON - 3, 3), icon)
         self._push(img)
 
     def _screen_status(self, text, colour=DIM):
@@ -666,7 +665,7 @@ class ClaudeMode(Mode):
     def _start_typing(self, text):
         base = self._font()
         fitted = fit_reply(text, base, notch=NOTCH)
-        size, font = self._grow_font(fitted)
+        font = base
         self.board_caption = None
         self.reply_text = fitted
         self.reply_font = font
@@ -688,16 +687,6 @@ class ClaudeMode(Mode):
         self.reply_box.insert("1.0", text)
         self.reply_box.configure(state="disabled")
         self._set_status("Typing the reply onto the screen.")
-
-    def _grow_font(self, text):
-        lo = int(self.settings.get("font_size"))
-        path = self._font_path()
-        for size in range(MAX_SIZE, lo - 1, -1):
-            font = fonts.load_font(path, size)
-            lines, rows = fonts.layout(text, font, notch=NOTCH)
-            if len(lines) <= rows:
-                return size, font
-        return lo, fonts.load_font(path, lo)
 
     @staticmethod
     def _line_starts(text, lines):
@@ -733,7 +722,7 @@ class ClaudeMode(Mode):
             shown[-1] += "_"
         img = fonts.draw_lines(shown, self.reply_font, FG, BG, notch=NOTCH)
         icon = starburst(angle % 360.0, ICON)
-        img.paste(icon, (3, 3), icon)
+        img.paste(icon, (fonts.WIDTH - ICON - 3, 3), icon)
         self._push(img)
 
     def tick(self, dt):
