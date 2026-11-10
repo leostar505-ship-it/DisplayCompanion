@@ -65,26 +65,26 @@ def text_size(draw, text, font, spacing=2):
     return box
 
 
-def layout(text, font, margin=2, spacing=2):
+def layout(text, font, margin=2, spacing=2, top=0):
     probe = ImageDraw.Draw(Image.new("RGB", (4, 4)))
     lines = wrap_text(text, font, WIDTH - margin * 2)
     one = probe.textbbox((0, 0), "Ag", font=font)
     single = one[3] - one[1]
     two = probe.multiline_textbbox((0, 0), "Ag\nAg", font=font, spacing=spacing)
     pitch = max(1, (two[3] - two[1]) - single)
-    avail = HEIGHT - margin * 2
+    avail = HEIGHT - margin * 2 - top
     rows = 0 if avail < single else 1 + (avail - single) // pitch
     return lines, rows
 
 
-def fitting_prefix(text, font, margin=2, spacing=2):
-    lines, rows = layout(text, font, margin, spacing)
+def fitting_prefix(text, font, margin=2, spacing=2, top=0):
+    lines, rows = layout(text, font, margin, spacing, top)
     if len(lines) <= rows:
         return len(text)
     lo, hi = 0, len(text)
     while lo < hi:
         mid = (lo + hi + 1) // 2
-        got, _ = layout(text[:mid], font, margin, spacing)
+        got, _ = layout(text[:mid], font, margin, spacing, top)
         if len(got) <= rows:
             lo = mid
         else:
@@ -92,13 +92,13 @@ def fitting_prefix(text, font, margin=2, spacing=2):
     return lo
 
 
-def render_block(text, font, fg, bg, align="center", valign="middle", margin=2, spacing=2, wrap=True):
+def render_block(text, font, fg, bg, align="center", valign="middle", margin=2, spacing=2, wrap=True, top=0):
     img = Image.new("RGB", (WIDTH, HEIGHT), bg)
     draw = ImageDraw.Draw(img)
     if not text:
         return img
     if wrap:
-        text = "\n".join(layout(text, font, margin, spacing)[0])
+        text = "\n".join(layout(text, font, margin, spacing, top)[0])
     box = text_size(draw, text, font, spacing)
     tw = box[2] - box[0]
     th = box[3] - box[1]
@@ -109,7 +109,7 @@ def render_block(text, font, fg, bg, align="center", valign="middle", margin=2, 
     else:
         x = (WIDTH - tw) // 2
     if valign == "top":
-        y = margin
+        y = margin + top
     elif valign == "bottom":
         y = HEIGHT - th - margin
     else:

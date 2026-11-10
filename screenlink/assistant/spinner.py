@@ -15,26 +15,36 @@ STOP_TIME = 0.55
 PETALS = (1.0, 0.72, 0.94, 0.66, 1.0, 0.74, 0.9, 0.68)
 
 
-def render(angle, size):
+def starburst(angle, size, color=ACCENT, fill=0.5):
     ss = 4
     big = size * ss
-    img = Image.new("RGB", (big, big), (1, 1, 1))
+    img = Image.new("RGBA", (big, big), color + (0,))
     d = ImageDraw.Draw(img)
     c = big / 2.0
-    d.ellipse((0, 0, big - 1, big - 1), fill=BG)
     n = len(PETALS)
     for i, length in enumerate(PETALS):
         a = math.radians(angle + i * 360.0 / n)
         r0 = big * 0.07
-        r1 = big * (0.2 + 0.22 * length)
-        w = big * 0.052
+        r1 = big * (0.2 + 0.22 * length) * (fill / 0.5)
+        w = big * 0.052 * (fill / 0.5)
         x0, y0 = c + math.cos(a) * r0, c + math.sin(a) * r0
         x1, y1 = c + math.cos(a) * r1, c + math.sin(a) * r1
-        d.line((x0, y0, x1, y1), fill=ACCENT, width=int(w * 2))
+        d.line((x0, y0, x1, y1), fill=color, width=int(w * 2))
         for x, y in ((x0, y0), (x1, y1)):
-            d.ellipse((x - w, y - w, x + w, y + w), fill=ACCENT)
-    d.ellipse((c - big * 0.045, c - big * 0.045, c + big * 0.045, c + big * 0.045), fill=ACCENT)
+            d.ellipse((x - w, y - w, x + w, y + w), fill=color)
+    d.ellipse((c - big * 0.045, c - big * 0.045, c + big * 0.045, c + big * 0.045), fill=color)
     return img.resize((size, size), Image.LANCZOS)
+
+
+def render(angle, size):
+    img = Image.new("RGB", (size, size), (1, 1, 1))
+    ss = 4
+    mask = Image.new("L", (size * ss, size * ss), 0)
+    ImageDraw.Draw(mask).ellipse((0, 0, size * ss - 1, size * ss - 1), fill=255)
+    img.paste(Image.new("RGB", (size, size), BG), (0, 0), mask.resize((size, size), Image.LANCZOS))
+    burst = starburst(angle, size)
+    img.paste(burst, (0, 0), burst)
+    return img
 
 
 class Spinner:

@@ -9,7 +9,7 @@ import numpy as np
 from .. import fonts
 from ..assistant import api, claude_code, cues, hotkey, screenshot, smartshot, speech, voice, whispercpp
 from ..assistant.hud import Hud
-from ..assistant.spinner import Spinner
+from ..assistant.spinner import Spinner, starburst
 from ..assistant.settings import Settings
 from ..assistant.typer import TypeSchedule, capacity, fit_reply
 from ..widgets import ACCENT, FIELD, PANEL, TEXT, Slider
@@ -22,6 +22,8 @@ BG = (0, 0, 0)
 DIM = (150, 156, 170)
 BAD = (255, 90, 100)
 
+
+HEADER = 15
 
 ERROR_CODES = (
     ("voice model", "E1", "No voice model"),
@@ -75,6 +77,10 @@ class ClaudeMode(Mode):
         self.last_img = None
         self.want_send = False
         self.run_ctx = None
+        self.board_caption = None
+        self.spin_t0 = 0.0
+        self.spin_bucket = -1
+        self.frozen_angle = 0.0
         self.spinner = None
         self.auto_shots = False
         self.cps_cache = None
@@ -333,7 +339,7 @@ class ClaudeMode(Mode):
 
     def limit(self):
         if self.cps_cache is None:
-            self.cps_cache = capacity(self._font())
+            self.cps_cache = capacity(self._font(), top=HEADER)
         return self.cps_cache
 
     def _refresh_fits(self):
@@ -491,6 +497,20 @@ class ClaudeMode(Mode):
                 "Press %s\nto ask Claude" % self.settings.get("hotkey"))
             self._push(fonts.render_block(hint, fonts.load_font(self._font_path(), 12), DIM, BG))
 
+    def _board_spin(self, caption):
+        self.board_caption = caption
+        self.spin_t0 = time.perf_counter()
+        self.spin_bucket = -1
+        self._board_frame(self.spin_t0)
+
+    def _board_frame(self, now):
+        angle = ((now - self.spin_t0) * 140.0) % 360.0
+        self.frozen_angle = angle
+        img = fonts.render_block(self.board_caption, fonts.load_font(self._font_path(), 12), DIM, BG)
+        icon = starburst(angle, 44)
+        img.paste(icon, ((fonts.WIDTH - 44) // 2, 6), icon)
+        self._push(img)
+
     def _screen_status(self, text, colour=DIM):
         self._push(fonts.render_block(text, fonts.load_font(self._font_path(), 12), colour, BG))
 
@@ -594,7 +614,7 @@ class ClaudeMode(Mode):
             self.phase = "thinking"
             self._cue("thinking")
             self._hud("thinking")
-            self._screen_status("Thinking...")
+            self._board_spin("Thinking...")
         self._set_status("Asking Claude: %s" % question)
         self._run(image, self.auto_shots and image is None)
 
@@ -615,7 +635,7 @@ class ClaudeMode(Mode):
         self.phase = "shot"
         self._cue("screenshot")
         self._hud("screenshot", dur)
-        self._screen_status("Looking at your screen...")
+        self._board_spin("Looking at your screen...")
         return image
 
     def _run(self, image, classify_first):
@@ -666,7 +686,8 @@ class ClaudeMode(Mode):
 
     def _start_typing(self, text):
         font = self._font()
-        fitted = fit_reply(text, font)
+        fitted = fit_reply(text, font, top=HEADER)
+        self.board_caption = None
         self.reply_text = fitted
         self.history.append(("user", self.question))
         self.history.append(("assistant", text))
@@ -685,7 +706,9 @@ class ClaudeMode(Mode):
 
     def _render_reply(self, count, cursor):
         text = self.reply_text[:count] + ("_" if cursor else "")
-        img = fonts.render_block(text, self._font(), FG, BG, "left", "top")
+        img = fonts.render_block(text, self._font(), FG, BG, "left", "top", top=HEADER)
+        icon = starburst(self.frozen_angle, 12)
+        img.paste(icon, (3, 2), icon)
         self._push(img)
 
     def tick(self, dt):
@@ -695,6 +718,11 @@ class ClaudeMode(Mode):
     def _tick_phase(self):
         self._pump()
         now = time.perf_counter()
+        if self.phase in ("shot", "thinking") and self.board_caption is not None:
+            bucket = int((now - self.spin_t0) * 12)
+            if bucket != self.spin_bucket:
+                self.spin_bucket = bucket
+                self._board_frame(now)
         if self.phase == "shot" and now >= self.shot_until:
             if self.pending_reply is not None:
                 self._start_typing(self.pending_reply)
@@ -705,7 +733,7 @@ class ClaudeMode(Mode):
                 self.phase = "thinking"
                 self._cue("thinking")
                 self._hud("thinking")
-                self._screen_status("Thinking...")
+                self._board_spin("Thinking...")
         elif self.phase == "thinking":
             if self.pending_reply is not None:
                 self._start_typing(self.pending_reply)
