@@ -54,11 +54,13 @@ def wants_more(reply):
 
 
 CLASSIFY_PROMPT = (
-    "You are a router. Decide whether answering the user's question well would depend on what is currently on "
-    "their computer screen, or on what they are doing right now. Answer YES if it could plausibly depend on that "
-    "(for example: recommendations about what to play, watch, buy or do, what to click, anything about this or that "
-    "or here, their open apps, errors, text, images, games or pages). Answer NO only for general knowledge, maths, "
-    "writing, facts or chat that stands completely on its own. If unsure, answer YES. "
+    "You are a router. Decide whether the answer depends on what is currently on the user's computer screen. "
+    "Answer YES only if the question points at something on their screen or in their current situation: it says "
+    "this, that, here or it about something visible, asks what to click or do next in an app, asks you to read, "
+    "describe, fix or check something they are looking at, or asks for a personal recommendation about what they "
+    "should play, watch or do right now. Answer NO for questions about a topic, a fact, an opinion, a why or how "
+    "explanation, maths, writing or chat, even if the question names a website, game or app (for example 'why is "
+    "there so much AI slop on YouTube Playables' is NO). If unsure, answer NO. "
     "Reply with exactly one word: YES or NO.\n\nQuestion: %s"
 )
 

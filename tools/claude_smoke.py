@@ -132,11 +132,33 @@ while time.time() < deadline and not (len(asked) == 1 and mode.phase == "idle"):
 assert classified == ["tell me something"] and asked == [True], (classified, asked)
 assert mode.reply_text.startswith("It is a desktop")
 
+asked2 = []
+
+
+def fake_ask2(key, model, q, image, limit, history, allow_screen=False):
+    asked2.append((image is not None, allow_screen))
+    return "NEED_SCREEN" if (image is None and allow_screen) else "Fine."
+
+
+mode.ask = fake_ask2
+mode.classify = lambda key, q: False
+mode.ask_var.set("why is the sky blue")
+mode._ask_typed()
+deadline = time.time() + 25
+while time.time() < deadline and not (len(asked2) == 2 and mode.phase == "idle"):
+    pump(0.05)
+assert asked2 == [(False, True), (True, False)], asked2
+mode.ask = fake_ask
+mode.classify = lambda key, q: True
+asked.clear()
+mode.phase = "idle"
+pump(0.2)
+
 mode.phase = "listening"
 mode.events.put(("text", "Never mind"))
 pump(0.3)
 assert mode.phase == "idle" and "Cancelled" in mode.status.cget("text"), mode.status.cget("text")
-assert len(asked) == 1
+assert len(asked) == 0
 
 s.set("api_key", "")
 mode.settings.data["api_key"] = ""

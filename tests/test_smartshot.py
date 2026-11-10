@@ -94,3 +94,8 @@ def test_classifier_verdicts():
     assert claude_code.classify("what game should I play", runner=runner("YES"), exe="claude") is True
     assert claude_code.classify("capital of France", runner=runner("No."), exe="claude") is False
     assert "haiku" in cmds[0][0] and "what game should I play" in cmds[0][1]
+
+
+def test_classifier_prompt_leans_no_for_topic_questions():
+    assert "If unsure, answer NO" in smartshot.CLASSIFY_PROMPT
+    assert "YouTube Playables" in smartshot.CLASSIFY_PROMPT

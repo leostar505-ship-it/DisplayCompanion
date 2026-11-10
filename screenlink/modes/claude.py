@@ -631,7 +631,15 @@ class ClaudeMode(Mode):
                     if needs:
                         self.events.put(("need_screen",))
                         return
-                self.events.put(("reply", self.ask(key, model, question, image, limit, history)))
+                allow = classify_first and image is None
+                if allow:
+                    reply = self.ask(key, model, question, image, limit, history, allow_screen=True)
+                    if smartshot.wants_more(reply):
+                        self.events.put(("need_screen",))
+                        return
+                else:
+                    reply = self.ask(key, model, question, image, limit, history)
+                self.events.put(("reply", reply))
             except api.AssistantError as exc:
                 self.events.put(("error", str(exc)))
             except Exception as exc:
