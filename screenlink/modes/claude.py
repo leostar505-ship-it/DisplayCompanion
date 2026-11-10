@@ -22,6 +22,31 @@ DIM = (150, 156, 170)
 BAD = (255, 90, 100)
 
 
+ERROR_CODES = (
+    ("voice model", "E1", "No voice model"),
+    ("didn't hear", "E2", "Heard nothing"),
+    ("didn't catch", "E3", "Didn't catch it"),
+    ("was not found", "E4", "No Claude Code"),
+    ("no api key", "E5", "No API key"),
+    ("screenshot", "E6", "Shot failed"),
+    ("not signed in", "E7", "Not signed in"),
+    ("too long", "E8", "Timed out"),
+    ("claude code failed", "E9", "Claude failed"),
+    ("could not start", "E10", "Won't start"),
+    ("could not reach", "E12", "Network error"),
+    ("claude sent", "E11", "API error"),
+    ("api", "E11", "API error"),
+)
+
+
+def error_info(message):
+    low = str(message).lower()
+    for needle, code, short in ERROR_CODES:
+        if needle in low:
+            return code, short
+    return "E0", "Unknown error"
+
+
 class ClaudeMode(Mode):
     name = "Claude"
     blurb = "Ask Claude by voice, hotkey or keyboard. Replies type onto the screen"
@@ -393,9 +418,15 @@ class ClaudeMode(Mode):
         if self.settings.get("sounds"):
             self.play(kind)
 
-    def _hud(self, kind, seconds=None):
+    def _hud(self, kind, seconds=None, detail=None):
         if self.hud is not None and self.settings.get("hud"):
-            self.hud.show(kind, seconds)
+            self.hud.show(kind, seconds, detail)
+
+    def _error_hud(self, message):
+        code, short = error_info(message)
+        self._cue("error")
+        self._hud("error", 4.5, ("Error %s" % code, short))
+        return code
 
     def listen_now(self):
         self.begin_listen(True)
@@ -404,9 +435,9 @@ class ClaudeMode(Mode):
         if self.phase != "idle":
             return
         if not speech.have_model():
-            self._set_status("Download the voice model first (button on the left). You can still type a question.")
-            self._cue("error")
-            self._hud("error", 3.9)
+            message = "Download the voice model first (button on the left). You can still type a question."
+            code = self._error_hud(message)
+            self._set_status("%s: %s" % (code, message))
             return
         if self.listener is None:
             self._start_listener()
@@ -487,10 +518,9 @@ class ClaudeMode(Mode):
         self.phase = "idle"
         self.pending_reply = None
         self.pending_error = None
-        self._set_status(message)
-        self._cue("error")
-        self._hud("error", 3.9)
-        self._screen_status("Error\n" + message[:60], BAD)
+        code = self._error_hud(message)
+        self._set_status("%s: %s" % (code, message))
+        self._screen_status("Error %s\n%s" % (code, message[:60]), BAD)
         self.reply_text = ""
         if self.listener is not None:
             self.listener.pause(False)

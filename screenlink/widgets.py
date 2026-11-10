@@ -12,7 +12,12 @@ MUTED = "#99a0b0"
 ACCENT = "#7a62ff"
 
 
-def apply_style(root):
+UI = 1.0
+
+
+def apply_style(root, ui=1.0):
+    global UI
+    UI = ui
     style = ttk.Style(root)
     style.theme_use("clam")
     style.configure(".", background=PANEL, foreground=TEXT, fieldbackground=FIELD, bordercolor=LINE,
@@ -21,7 +26,7 @@ def apply_style(root):
     style.configure("Dark.TFrame", background=BG)
     style.configure("TLabel", background=PANEL, foreground=TEXT)
     style.configure("Muted.TLabel", background=PANEL, foreground=MUTED)
-    style.configure("TButton", background=FIELD, foreground=TEXT, padding=(10, 5), borderwidth=1)
+    style.configure("TButton", background=FIELD, foreground=TEXT, padding=(int(10 * ui), int(5 * ui)), borderwidth=1)
     style.map("TButton", background=[("active", LINE), ("pressed", ACCENT)])
     style.configure("Accent.TButton", background=ACCENT, foreground="#ffffff")
     style.map("Accent.TButton", background=[("active", "#9582ff")])
@@ -48,7 +53,7 @@ class Slider(ttk.Frame):
         self.command = command
         self.var = tk.DoubleVar(value=value)
         ttk.Label(self, text=label, width=14).grid(row=0, column=0, sticky="w")
-        self.scale = ttk.Scale(self, from_=lo, to=hi, variable=self.var, command=self._changed, length=length)
+        self.scale = ttk.Scale(self, from_=lo, to=hi, variable=self.var, command=self._changed, length=int(length * UI))
         self.scale.grid(row=0, column=1, padx=6)
         self.value_label = ttk.Label(self, width=6, style="Muted.TLabel")
         self.value_label.grid(row=0, column=2, sticky="w")

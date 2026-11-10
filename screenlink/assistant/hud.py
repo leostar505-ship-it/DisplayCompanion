@@ -45,6 +45,14 @@ class Hud:
         self.visible = False
         self.last_geometry = None
 
+    @property
+    def eff(self):
+        try:
+            ui = max(1.0, float(self.root.winfo_fpixels("1i")) / 96.0)
+        except Exception:
+            ui = 1.0
+        return self.scale * ui
+
     def configure(self, scale, speed):
         speed = max(0.5, speed)
         if abs(scale - self.scale) > 0.01:
@@ -66,7 +74,7 @@ class Hud:
 
     def _ensure(self):
         if self.card is None:
-            self.card = hudart.Card(self.scale)
+            self.card = hudart.Card(self.eff)
         if self.win is not None:
             return True
         try:
@@ -90,7 +98,7 @@ class Hud:
             self.win = None
             return False
 
-    def show(self, kind, seconds=None):
+    def show(self, kind, seconds=None, detail=None):
         if not self._ensure():
             return
         now = time.perf_counter()
@@ -100,6 +108,7 @@ class Hud:
             "start": self.state["start"] if active else now,
             "changed": now,
             "seconds": seconds,
+            "detail": detail,
             "out": None,
         }
         if not self.running:
@@ -148,13 +157,15 @@ class Hud:
         if s["seconds"] is not None and s["out"] is None:
             frac = max(0.0, 1 - (now - s["changed"]) / s["seconds"])
         t = now - s["changed"]
-        img = self.card.render(s["kind"], t, now, frac, self.speed)
+        detail = s.get("detail")
+        img = self.card.render(s["kind"], t, now, frac, self.speed,
+                               title=detail[0] if detail else None, sub=detail[1] if detail else None)
         self.photo = ImageTk.PhotoImage(img)
         self.label.configure(image=self.photo)
         try:
             sw = self.win.winfo_screenwidth()
-            x = int(sw - self.card.w - MARGIN * self.scale + (1 - slide) * 40 * self.scale)
-            y = int(MARGIN * self.scale)
+            x = int(sw - self.card.w - MARGIN * self.eff + (1 - slide) * 40 * self.eff)
+            y = int(MARGIN * self.eff)
             geometry = "%dx%d+%d+%d" % (self.card.w, self.card.h, x, y)
             if geometry != self.last_geometry:
                 self.win.geometry(geometry)

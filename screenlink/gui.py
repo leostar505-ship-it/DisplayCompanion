@@ -45,9 +45,17 @@ class App:
 
         root.title("Display Companion %s" % __version__)
         root.configure(bg=BG)
-        root.minsize(1100, 760)
-        root.geometry("1220x800")
-        apply_style(root)
+        try:
+            self.ui = max(1.0, float(root.winfo_fpixels("1i")) / 96.0)
+        except Exception:
+            self.ui = 1.0
+        sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+        width = min(int(1220 * self.ui), int(sw * 0.96))
+        height = min(int(800 * self.ui), int(sh * 0.92))
+        root.minsize(min(int(1100 * self.ui), width), min(int(760 * self.ui), height))
+        root.geometry("%dx%d" % (width, height))
+        self.zoom = max(ZOOM, min(int(ZOOM * self.ui), int((sh * 0.5) / H), int((sw * 0.42) / W)))
+        apply_style(root, self.ui)
         self._icon()
         self._build_topbar()
         self._build_body()
@@ -93,7 +101,7 @@ class App:
                                highlightthickness=1, highlightbackground=LINE, activestyle="none",
                                font=("TkDefaultFont", 13), width=12)
         self.menu.pack(anchor="w")
-        self.blurb = ttk.Label(side, text="", style="Muted.TLabel", wraplength=150, justify="left")
+        self.blurb = ttk.Label(side, text="", style="Muted.TLabel", wraplength=int(150 * self.ui), justify="left")
         self.blurb.pack(anchor="w", pady=10)
         self.modes = [cls(self) for cls in ALL_MODES]
         for mode in self.modes:
@@ -106,7 +114,7 @@ class App:
         self.root.rowconfigure(1, weight=1)
         holder = tk.Frame(main, bg=BG, highlightthickness=2, highlightbackground=LINE)
         holder.pack(anchor="w")
-        self.canvas = tk.Canvas(holder, width=W * ZOOM, height=H * ZOOM, bg="#000000", highlightthickness=0)
+        self.canvas = tk.Canvas(holder, width=W * self.zoom, height=H * self.zoom, bg="#000000", highlightthickness=0)
         self.canvas.pack()
         self.canvas_item = self.canvas.create_image(0, 0, anchor="nw")
         self.canvas.bind("<ButtonPress-1>", lambda e: self._mouse("press", e))
@@ -147,7 +155,7 @@ class App:
 
     def _mouse(self, kind, event):
         if self.current is not None:
-            self.current.mouse(kind, int(event.x // ZOOM), int(event.y // ZOOM))
+            self.current.mouse(kind, int(event.x // self.zoom), int(event.y // self.zoom))
 
     def refresh_ports(self):
         entries = [SIMULATOR_NAME]
@@ -246,7 +254,7 @@ class App:
         if self.display.version == self.preview_version:
             return
         self.preview_version = self.display.version
-        img = self.display.rgb_image().resize((W * ZOOM, H * ZOOM), Image.NEAREST)
+        img = self.display.rgb_image().resize((W * self.zoom, H * self.zoom), Image.NEAREST)
         self.photo = ImageTk.PhotoImage(img)
         self.canvas.itemconfigure(self.canvas_item, image=self.photo)
 
@@ -296,7 +304,23 @@ class App:
             self.root.destroy()
 
 
+def enable_dpi_awareness():
+    if sys.platform != "win32":
+        return
+    import ctypes
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        return
+    except Exception:
+        pass
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
+
 def main():
+    enable_dpi_awareness()
     root = tk.Tk()
     app = App(root)
     app.run()
