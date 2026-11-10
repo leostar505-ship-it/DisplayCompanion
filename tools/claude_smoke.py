@@ -96,6 +96,8 @@ assert cues_played[:4] == ["screenshot", "thinking", "responding", "done"] or cu
     "screenshot", "responding", "done"], cues_played
 assert calls and calls[0][2] == "What is on my screen?" and calls[0][3] == "AAAA"
 assert mode.reply_text.startswith("Your screen shows")
+assert time.perf_counter() - mode.type_start >= 0.7
+assert abs(mode._icon_angle(time.perf_counter()) % 90.0 - 45.0) < 0.01, mode._icon_angle(time.perf_counter())
 pump(0.3)
 shot("claude_done")
 assert mode.hud.current_kind() == "done", mode.hud.current_kind()

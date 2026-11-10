@@ -764,8 +764,9 @@ class ClaudeMode(Mode):
                 self._fail(self.pending_error)
         elif self.phase == "typing":
             n = self.schedule.count(now - self.type_start)
-            done = n >= self.schedule.size
-            cursor = (not done) and int((now - self.type_start) * 2.5) % 2 == 0
+            typed = n >= self.schedule.size
+            done = typed and now - self.type_start >= SETTLE
+            cursor = (not typed) and int((now - self.type_start) * 2.5) % 2 == 0
             angle = self._icon_angle(now)
             key = (n, cursor, done, int(angle))
             if key != self.shown_key:

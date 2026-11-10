@@ -99,3 +99,23 @@ def test_classifier_verdicts():
 def test_classifier_prompt_leans_no_for_topic_questions():
     assert "If unsure, answer NO" in smartshot.CLASSIFY_PROMPT
     assert "YouTube Playables" in smartshot.CLASSIFY_PROMPT
+
+
+def test_board_text_draws_emoji_in_colour():
+    from PIL import Image
+    from screenlink import fonts
+    font = fonts.load_font(None, 12)
+    if fonts._emoji_font(48) is None:
+        return
+    plain = fonts.draw_lines(["Hi  there"], font, (255, 255, 255), (0, 0, 0))
+    with_emoji = fonts.draw_lines(["Hi \U0001F600 there"], font, (255, 255, 255), (0, 0, 0))
+    assert fonts.text_length(__import__("PIL.ImageDraw", fromlist=["x"]).Draw(Image.new("RGB", (4, 4))), "\U0001F600", font) > 4
+    colours = {p for p in with_emoji.getdata() if len({*p}) > 1 and p not in ((255, 255, 255), (0, 0, 0)) and max(p) - min(p) > 60}
+    assert colours
+    assert not {p for p in plain.getdata() if max(p) - min(p) > 60}
+
+
+def test_icon_waits_for_settle_on_short_replies():
+    import re
+    src = open("screenlink/modes/claude.py", encoding="utf-8").read()
+    assert re.search(r"done = typed and now - self\.type_start >= SETTLE", src)
