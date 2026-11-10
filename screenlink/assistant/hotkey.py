@@ -31,7 +31,9 @@ def parse(spec):
             key = 0x70 + int(part[1:]) - 1
         else:
             return None
-    if key is None or mods == 0:
+    if key is None:
+        return None
+    if mods == 0 and not (0x70 <= key <= 0x87):
         return None
     return mods, key
 
@@ -47,7 +49,7 @@ class Hotkey:
         self.stop()
         parsed = parse(spec)
         if parsed is None:
-            self.error = "Use something like ctrl+alt+c (at least one of ctrl, alt, shift, win plus a key)."
+            self.error = "Use something like ctrl+alt+c, or a single F-key like f7."
             return False
         if sys.platform != "win32":
             self.error = "Global hotkeys only work on Windows."

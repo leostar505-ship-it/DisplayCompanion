@@ -11,7 +11,16 @@ TIMEOUT = 150
 
 
 def find():
-    return shutil.which("claude")
+    found = shutil.which("claude")
+    if found:
+        return found
+    home = os.path.expanduser("~")
+    for rel in (os.path.join(".local", "bin", "claude.exe"), os.path.join(".local", "bin", "claude"),
+                os.path.join("AppData", "Roaming", "npm", "claude.cmd")):
+        path = os.path.join(home, rel)
+        if os.path.isfile(path):
+            return path
+    return None
 
 
 def alias(model):
