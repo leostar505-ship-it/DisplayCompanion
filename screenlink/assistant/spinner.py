@@ -3,7 +3,7 @@ import math
 from PIL import Image, ImageDraw
 
 ACCENT = (240, 128, 64)
-PETALS = (1.0, 0.72, 0.94, 0.66, 1.0, 0.74, 0.9, 0.68)
+PETALS = (1.0, 0.3, 0.94, 0.26, 1.0, 0.32, 0.9, 0.28)
 
 
 def starburst(angle, size, color=ACCENT, fill=0.5):

@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import ttk
 
 import numpy as np
+from PIL import Image
 
 from .. import fonts
 from ..assistant import api, claude_code, cues, hotkey, screenshot, smartshot, speech, voice, whispercpp
@@ -25,6 +26,7 @@ BAD = (255, 90, 100)
 
 ICON = 16
 SETTLE = 0.7
+NEUTRAL = 45.0
 NOTCH = (ICON + 5, ICON + 4)
 
 ERROR_CODES = (
@@ -665,7 +667,13 @@ class ClaudeMode(Mode):
         self.pending_error = None
         code = self._error_hud(message)
         self._set_status("%s: %s" % (code, message))
-        self._screen_status("Error %s\n%s" % (code, message[:60]), BAD)
+        spinning = self.board_caption is not None
+        self.board_caption = None
+        frame = fonts.render_block("Error %s\n%s" % (code, message[:60]), fonts.load_font(self._font_path(), 12), BAD, BG)
+        if spinning:
+            icon = starburst(NEUTRAL, ICON)
+            frame.paste(icon, (fonts.WIDTH - ICON - 3, 3), icon)
+        self._push(frame)
         self.reply_text = ""
         if self.listener is not None:
             self.listener.pause(False)
@@ -686,6 +694,7 @@ class ClaudeMode(Mode):
         self.type_start = time.perf_counter()
         self.stop_from = self.frozen_angle
         self.stop_to = self._neutral_after(self.frozen_angle)
+        self.frozen_angle = self.stop_to
         self.shown_key = None
         self.phase = "typing"
         self._cue("responding")
@@ -719,6 +728,15 @@ class ClaudeMode(Mode):
         t = min(1.0, max(0.0, (now - self.type_start) / SETTLE))
         eased = 1 - (1 - t) ** 3
         return self.stop_from + (self.stop_to - self.stop_from) * eased
+
+    def _final_frame(self):
+        try:
+            self._render_reply(self.schedule.size, False, NEUTRAL)
+        except Exception:
+            img = Image.new("RGB", (fonts.WIDTH, fonts.HEIGHT), BG)
+            icon = starburst(NEUTRAL, ICON)
+            img.paste(icon, (fonts.WIDTH - ICON - 3, 3), icon)
+            self._push(img)
 
     def _render_reply(self, count, cursor, angle):
         shown = []
@@ -774,6 +792,7 @@ class ClaudeMode(Mode):
                 self._render_reply(n, cursor, angle)
             if done:
                 self.phase = "idle"
+                self._final_frame()
                 self._cue("done")
                 self._hud("done", 3.2)
                 self._set_status("Done. Press %s to ask again." % self.settings.get("hotkey"))

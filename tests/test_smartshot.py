@@ -119,3 +119,26 @@ def test_icon_waits_for_settle_on_short_replies():
     import re
     src = open("screenlink/modes/claude.py", encoding="utf-8").read()
     assert re.search(r"done = typed and now - self\.type_start >= SETTLE", src)
+
+
+def test_neutral_icon_is_an_x_not_a_plus():
+    from screenlink.assistant.spinner import starburst
+    from screenlink.modes.claude import NEUTRAL
+
+    def reach(alpha, dx, dy):
+        n = 0
+        for step in range(1, 32):
+            if alpha.getpixel((32 + int(dx * step), 32 + int(dy * step))) > 100:
+                n = step
+        return n
+
+    def measure(angle):
+        alpha = starburst(angle, 64).split()[3]
+        diagonal = min(reach(alpha, 0.707, 0.707), reach(alpha, -0.707, 0.707), reach(alpha, 0.707, -0.707), reach(alpha, -0.707, -0.707))
+        straight = max(reach(alpha, 1, 0), reach(alpha, -1, 0), reach(alpha, 0, 1), reach(alpha, 0, -1))
+        return diagonal, straight
+
+    diagonal, straight = measure(NEUTRAL)
+    assert diagonal >= straight * 1.3
+    diagonal, straight = measure(0.0)
+    assert straight >= diagonal * 1.3
