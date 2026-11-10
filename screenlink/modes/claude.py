@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from .. import fonts
-from ..assistant import api, cues, hotkey, screenshot, speech
+from ..assistant import api, claude_code, cues, hotkey, screenshot, speech
 from ..assistant.hud import Hud
 from ..assistant.settings import Settings
 from ..assistant.typer import TypeSchedule, capacity, fit_reply
@@ -48,8 +48,13 @@ class ClaudeMode(Mode):
         self.cps_cache = None
         self.downloading = False
         self.grab = screenshot.grab
-        self.ask = api.ask
+        self.ask = self._dispatch
         self.play = cues.play
+
+    def _dispatch(self, key, model, question, image, limit, history):
+        if self.settings.get("backend") == "claude_code":
+            return claude_code.ask(model, question, image, limit, history)
+        return api.ask(key, model, question, image, limit, history)
 
     def build(self, parent):
         f = ttk.Frame(parent)
@@ -60,6 +65,7 @@ class ClaudeMode(Mode):
         if default not in self.font_paths:
             default = "DejaVu Sans" if "DejaVu Sans" in self.font_paths else (
                 "Segoe UI" if "Segoe UI" in self.font_paths else fonts.BUILTIN)
+        self.backend_var = tk.StringVar(value=s.get("backend"))
         self.key_var = tk.StringVar(value=s.get("api_key"))
         self.show_key = tk.BooleanVar(value=False)
         self.model_var = tk.StringVar(value=s.get("model"))
@@ -131,6 +137,15 @@ class ClaudeMode(Mode):
         s1.grid(row=0, column=0, sticky="nw", padx=(0, 28))
         row = ttk.Frame(s1)
         row.pack(anchor="w", pady=2)
+        ttk.Label(row, text="Use", width=10).pack(side="left")
+        ttk.Radiobutton(row, text="My Claude Code login (plan usage)", value="claude_code",
+                        variable=self.backend_var, command=self._backend_changed).pack(side="left")
+        ttk.Radiobutton(row, text="API key (credits)", value="api", variable=self.backend_var,
+                        command=self._backend_changed).pack(side="left", padx=8)
+        self.backend_label = ttk.Label(s1, text="", style="Muted.TLabel", wraplength=420, justify="left")
+        self.backend_label.pack(anchor="w", pady=(0, 4))
+        row = ttk.Frame(s1)
+        row.pack(anchor="w", pady=2)
         ttk.Label(row, text="API key", width=10).pack(side="left")
         self.key_entry = ttk.Entry(row, textvariable=self.key_var, show="\u2022", width=30)
         self.key_entry.pack(side="left")
@@ -152,10 +167,8 @@ class ClaudeMode(Mode):
         ent.pack(side="left")
         ent.bind("<Return>", lambda e: self._apply_hotkey())
         ttk.Button(row, text="Apply", command=self._apply_hotkey).pack(side="left", padx=6)
-        self.hotkey_label = ttk.Label(s1, text="", style="Muted.TLabel", wraplength=380, justify="left")
-        self.hotkey_label.pack(anchor="w")
-        ttk.Label(s1, text="The key is kept only on this PC (console.anthropic.com to get one).",
-                  style="Muted.TLabel", wraplength=380, justify="left").pack(anchor="w", pady=(4, 0))
+        self.hotkey_label = ttk.Label(row, text="", style="Muted.TLabel", wraplength=230, justify="left")
+        self.hotkey_label.pack(side="left")
 
         s2 = ttk.Frame(set_tab)
         s2.grid(row=0, column=1, sticky="nw")
@@ -176,6 +189,22 @@ class ClaudeMode(Mode):
 
     def _save(self):
         self.settings.save()
+
+    def _backend_changed(self):
+        self.settings.set("backend", self.backend_var.get())
+        self._save()
+        self._refresh_backend()
+
+    def _refresh_backend(self):
+        if self.backend_var.get() == "claude_code":
+            path = claude_code.find()
+            if path:
+                self.backend_label.configure(text="Claude Code found. Questions use your plan, no API credits.")
+            else:
+                self.backend_label.configure(
+                    text="Claude Code not found on this PC. Install it and run `claude` once to sign in.")
+        else:
+            self.backend_label.configure(text="Uses your API key (kept only on this PC). Costs API credits.")
 
     def _save_key(self):
         self.settings.set("api_key", self.key_var.get().strip())
@@ -296,6 +325,7 @@ class ClaudeMode(Mode):
             self.hud = Hud(self.app.root, self.settings.get("hud_scale"), self.settings.get("hud_speed"))
         self._refresh_voice()
         self._refresh_fits()
+        self._refresh_backend()
         self._start_hotkey()
         if self.wake_var.get():
             self._start_listener()
@@ -385,8 +415,12 @@ class ClaudeMode(Mode):
 
     def submit(self, question):
         key = self.settings.api_key()
-        if not key:
-            self._fail("No API key yet. Paste one into the API key box.")
+        if self.settings.get("backend") == "claude_code":
+            if not claude_code.find() and self.ask == self._dispatch:
+                self._fail("Claude Code was not found. Install it and sign in, or switch to an API key in Setup.")
+                return
+        elif not key:
+            self._fail("No API key yet. Paste one into Setup, or switch to Claude Code.")
             return
         self.question = question
         self.pending_reply = None

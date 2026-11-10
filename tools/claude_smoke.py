@@ -45,6 +45,7 @@ assert mode.name == "Claude"
 pump(0.3)
 s = mode.settings
 s.set("api_key", "sk-test")
+s.set("backend", "api")
 s.set("hud_speed", 2.5)
 s.set("typing_cps", 90)
 s.set("hotkey", "ctrl+alt+c")
@@ -110,6 +111,7 @@ shot("claude_error")
 
 s.set("api_key", "")
 mode.settings.data["api_key"] = ""
+mode.settings.set("backend", "api")
 import os
 os.environ.pop("ANTHROPIC_API_KEY", None)
 cues_played.clear()

@@ -3,6 +3,7 @@ import os
 import pathlib
 
 DEFAULTS = {
+    "backend": "claude_code",
     "api_key": "",
     "model": "claude-sonnet-5-5",
     "hotkey": "ctrl+alt+c",

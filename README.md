@@ -64,7 +64,7 @@ To build a proper Windows installer (installs to Program Files, adds a desktop s
 
 ## Claude tab (voice assistant)
 
-Pick **Claude** in the mode list, then open **Setup** and paste an Anthropic API key (stored only in `%APPDATA%\DisplayCompanion\assistant.json`).
+Pick **Claude** in the mode list, then open **Setup** and choose how to talk to Claude. **My Claude Code login** (default) runs `claude -p` in the background, so it uses your Claude plan and needs Claude Code installed and signed in. **API key** uses Anthropic API credits instead (the key is stored only in `%APPDATA%\DisplayCompanion\assistant.json`).
 
 - **Hey Claude**: click *Download voice model* once (about 40 MB, runs offline afterwards). While the Claude tab is open the microphone listens for "Hey Claude", then records your question until you stop talking.
 - **Hotkey**: default `ctrl+alt+c`, works in any app. Change it in Setup.

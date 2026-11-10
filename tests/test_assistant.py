@@ -255,3 +255,52 @@ def test_hud_card_renders_every_kind():
             assert img.size == (card.w, card.h)
     img = card.render("listening", 1.0, 1.0)
     assert img.getpixel((2, 2)) == hudart.KEY or sum(img.getpixel((0, 0))) < 40
+
+
+class FakeRun:
+    def __init__(self, out="", err="", code=0):
+        self.stdout, self.stderr, self.returncode = out, err, code
+
+
+def test_claude_code_ask_builds_command_and_reads_image():
+    from screenlink.assistant import claude_code
+    seen = {}
+
+    def runner(cmd, prompt, cwd, timeout):
+        import os
+        seen["cmd"], seen["prompt"] = cmd, prompt
+        seen["file"] = os.path.exists(os.path.join(cwd, "screen.jpg"))
+        return FakeRun("**Fine** answer\n")
+
+    img = encode(Image.new("RGB", (40, 30), (1, 2, 3)))
+    out = claude_code.ask("claude-haiku-5-5", "what is this?", img, 120, [("user", "hi"), ("assistant", "yo")],
+                          runner=runner, exe="claude")
+    assert out == "Fine answer"
+    assert seen["cmd"][:4] == ["claude", "-p", "--model", "haiku"]
+    assert "--allowedTools" in seen["cmd"] and seen["file"]
+    assert "120 characters" in seen["prompt"] and "screen.jpg" in seen["prompt"]
+    assert seen["prompt"].rstrip().endswith(api.SUFFIX)
+    assert "User: hi" in seen["prompt"]
+
+
+def test_claude_code_no_image_has_no_tools():
+    from screenlink.assistant import claude_code
+    seen = {}
+
+    def runner(cmd, prompt, cwd, timeout):
+        seen["cmd"] = cmd
+        return FakeRun("ok")
+
+    claude_code.ask("m", "q", None, 50, runner=runner, exe="claude")
+    assert "--allowedTools" not in seen["cmd"]
+
+
+def test_claude_code_errors(monkeypatch):
+    from screenlink.assistant import claude_code
+    monkeypatch.setattr(claude_code, "find", lambda: None)
+    with pytest.raises(api.AssistantError, match="not found"):
+        claude_code.ask("m", "q", None, 50, runner=lambda *a: FakeRun("x"))
+    with pytest.raises(api.AssistantError, match="not signed in"):
+        claude_code.ask("m", "q", None, 50, runner=lambda *a: FakeRun("", "Please login first", 1), exe="claude")
+    with pytest.raises(api.AssistantError, match="failed"):
+        claude_code.ask("m", "q", None, 50, runner=lambda *a: FakeRun("", "boom", 2), exe="claude")
