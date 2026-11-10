@@ -23,7 +23,8 @@ DIM = (150, 156, 170)
 BAD = (255, 90, 100)
 
 
-HEADER = 15
+ICON = 16
+NOTCH = (ICON + 5, ICON + 4)
 
 ERROR_CODES = (
     ("voice model", "E1", "No voice model"),
@@ -339,7 +340,7 @@ class ClaudeMode(Mode):
 
     def limit(self):
         if self.cps_cache is None:
-            self.cps_cache = capacity(self._font(), top=HEADER)
+            self.cps_cache = capacity(self._font(), notch=NOTCH)
         return self.cps_cache
 
     def _refresh_fits(self):
@@ -507,8 +508,8 @@ class ClaudeMode(Mode):
         angle = ((now - self.spin_t0) * 140.0) % 360.0
         self.frozen_angle = angle
         img = fonts.render_block(self.board_caption, fonts.load_font(self._font_path(), 12), DIM, BG)
-        icon = starburst(angle, 44)
-        img.paste(icon, ((fonts.WIDTH - 44) // 2, 6), icon)
+        icon = starburst(angle, ICON)
+        img.paste(icon, (fonts.WIDTH - ICON - 3, 3), icon)
         self._push(img)
 
     def _screen_status(self, text, colour=DIM):
@@ -686,7 +687,7 @@ class ClaudeMode(Mode):
 
     def _start_typing(self, text):
         font = self._font()
-        fitted = fit_reply(text, font, top=HEADER)
+        fitted = fit_reply(text, font, notch=NOTCH)
         self.board_caption = None
         self.reply_text = fitted
         self.history.append(("user", self.question))
@@ -706,9 +707,9 @@ class ClaudeMode(Mode):
 
     def _render_reply(self, count, cursor):
         text = self.reply_text[:count] + ("_" if cursor else "")
-        img = fonts.render_block(text, self._font(), FG, BG, "left", "top", top=HEADER)
-        icon = starburst(self.frozen_angle, 12)
-        img.paste(icon, (3, 2), icon)
+        img = fonts.render_block(text, self._font(), FG, BG, "left", "top", notch=NOTCH)
+        icon = starburst(self.frozen_angle, ICON)
+        img.paste(icon, (fonts.WIDTH - ICON - 3, 3), icon)
         self._push(img)
 
     def tick(self, dt):

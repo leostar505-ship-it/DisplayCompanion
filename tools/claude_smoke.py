@@ -21,6 +21,7 @@ app = App.__new__(App)
 os.environ["APPDATA"] = tempfile.mkdtemp()
 app.assistant_settings = Settings(pathlib.Path(tempfile.mkdtemp()) / "a.json")
 app.assistant_settings.set("auto_download", False)
+app.assistant_settings.set("spinner", True)
 App.__init__(app, root)
 root.geometry("+0+0")
 

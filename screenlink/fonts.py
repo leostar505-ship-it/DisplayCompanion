@@ -65,26 +65,30 @@ def text_size(draw, text, font, spacing=2):
     return box
 
 
-def layout(text, font, margin=2, spacing=2, top=0):
+def layout(text, font, margin=2, spacing=2, top=0, notch=None):
     probe = ImageDraw.Draw(Image.new("RGB", (4, 4)))
-    lines = wrap_text(text, font, WIDTH - margin * 2)
     one = probe.textbbox((0, 0), "Ag", font=font)
     single = one[3] - one[1]
     two = probe.multiline_textbbox((0, 0), "Ag\nAg", font=font, spacing=spacing)
     pitch = max(1, (two[3] - two[1]) - single)
+    narrow = None
+    if notch:
+        count = max(1, -(-(notch[1] - margin) // pitch))
+        narrow = (count, WIDTH - margin * 2 - notch[0])
+    lines = wrap_text(text, font, WIDTH - margin * 2, narrow)
     avail = HEIGHT - margin * 2 - top
     rows = 0 if avail < single else 1 + (avail - single) // pitch
     return lines, rows
 
 
-def fitting_prefix(text, font, margin=2, spacing=2, top=0):
-    lines, rows = layout(text, font, margin, spacing, top)
+def fitting_prefix(text, font, margin=2, spacing=2, top=0, notch=None):
+    lines, rows = layout(text, font, margin, spacing, top, notch)
     if len(lines) <= rows:
         return len(text)
     lo, hi = 0, len(text)
     while lo < hi:
         mid = (lo + hi + 1) // 2
-        got, _ = layout(text[:mid], font, margin, spacing, top)
+        got, _ = layout(text[:mid], font, margin, spacing, top, notch)
         if len(got) <= rows:
             lo = mid
         else:
@@ -92,13 +96,13 @@ def fitting_prefix(text, font, margin=2, spacing=2, top=0):
     return lo
 
 
-def render_block(text, font, fg, bg, align="center", valign="middle", margin=2, spacing=2, wrap=True, top=0):
+def render_block(text, font, fg, bg, align="center", valign="middle", margin=2, spacing=2, wrap=True, top=0, notch=None):
     img = Image.new("RGB", (WIDTH, HEIGHT), bg)
     draw = ImageDraw.Draw(img)
     if not text:
         return img
     if wrap:
-        text = "\n".join(layout(text, font, margin, spacing, top)[0])
+        text = "\n".join(layout(text, font, margin, spacing, top, notch)[0])
     box = text_size(draw, text, font, spacing)
     tw = box[2] - box[0]
     th = box[3] - box[1]
@@ -141,13 +145,15 @@ def fit_size(text, path, lo=6, hi=72, margin=4):
     return best
 
 
-def wrap_text(text, font, width):
+def wrap_text(text, font, width, narrow=None):
     probe = ImageDraw.Draw(Image.new("RGB", (4, 4)))
     lines = []
+    full = width
     for raw in text.split("\n"):
         words = raw.split(" ")
         cur = ""
         for word in words:
+            width = narrow[1] if narrow and len(lines) < narrow[0] else full
             trial = word if not cur else cur + " " + word
             if probe.textlength(trial, font=font) <= width:
                 cur = trial

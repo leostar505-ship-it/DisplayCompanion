@@ -12,7 +12,7 @@ DEFAULTS = {
     "sounds": True,
     "web_search": True,
     "hud": True,
-    "spinner": True,
+    "spinner": False,
     "hud_scale": 1.5,
     "hud_speed": 1.6,
     "font": "",
