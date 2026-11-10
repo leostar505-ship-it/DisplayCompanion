@@ -13,13 +13,16 @@ class AssistantError(Exception):
     pass
 
 
-def system_prompt(limit):
-    return (
+def system_prompt(limit, has_image=True):
+    text = (
         "You are Claude, answering through Display Companion, a tiny %d character text screen on the user's desk. "
         "Your whole reply must be at most %d characters. Use plain text only: no markdown, no bullet symbols, "
         "no emoji, no headings. Be direct and short, and answer the question first. If a screenshot is attached, "
         "it shows the user's screen right now." % (limit, limit)
     )
+    if not has_image:
+        text += " Screenshot mode is off: no screenshot is attached, so ignore any photos or images and do not try to look at the screen."
+    return text
 
 
 def user_text(question):
@@ -36,7 +39,7 @@ def build_body(model, question, image_b64, limit, history):
     return {
         "model": model,
         "max_tokens": max(96, min(1024, int(limit * 0.6))),
-        "system": system_prompt(limit),
+        "system": system_prompt(limit, bool(image_b64)),
         "messages": messages,
     }
 

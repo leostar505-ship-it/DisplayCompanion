@@ -41,6 +41,9 @@ def build_prompt(question, limit, history, has_image):
     if has_image:
         parts.append("The user's screen right now is in the image file screen.jpg in the current folder. "
                      "Read it before answering.")
+    else:
+        parts.append("Screenshot mode is off: no screenshot is attached, so ignore any photos or images and "
+                     "do not try to look at the screen.")
     past = list(history)[-MAX_HISTORY:]
     if past:
         lines = ["%s: %s" % ("User" if role == "user" else "Claude", text) for role, text in past]
