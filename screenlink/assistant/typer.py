@@ -2,12 +2,18 @@ import bisect
 import random
 
 from .. import fonts
+from .blaze import INSTANT
 
 SAMPLE = "the quick brown fox jumps over a lazy dog and then keeps on running far away "
 
 
 class TypeSchedule:
     def __init__(self, text, cps, seed=7):
+        if float(cps) >= INSTANT:
+            self.times = [0.0] * len(text)
+            self.total = 0.0
+            self.size = len(text)
+            return
         rng = random.Random(seed)
         base = 1.0 / max(1.0, float(cps))
         self.times = []

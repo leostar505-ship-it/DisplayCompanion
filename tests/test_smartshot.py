@@ -166,3 +166,23 @@ def test_fast_prompts_ask_for_speed():
     assert "Speed matters" in claude_code.build_prompt("2+2", 100, [], False, fast=True)
     assert "Speed matters" not in claude_code.build_prompt("2+2", 100, [], False)
     assert "Speed matters" in api.system_prompt(100, False, False, True)
+
+
+def test_instant_typing_reveals_everything_at_once():
+    from screenlink.assistant.typer import TypeSchedule
+    from screenlink.assistant.blaze import INSTANT, speed_label
+    plan = TypeSchedule("hello there", INSTANT)
+    assert plan.count(0.0) == plan.size == 11
+    slow = TypeSchedule("hello there", 1)
+    assert slow.count(0.5) < 3
+    assert speed_label(INSTANT) == "Instant" and speed_label(12) == "12 /s"
+
+
+def test_blaze_reasoning_lines_and_optional_web():
+    from screenlink.assistant import blaze, claude_code
+    assert "only the final answer" in blaze.reasoning(0)
+    assert "at most 3 short lines" in blaze.reasoning(3)
+    text = claude_code.build_prompt("q", 100, [], False, web=True, fast=True, lines=2)
+    assert "only when the answer truly depends" in text and "at most 2 short lines" in text
+    normal = claude_code.build_prompt("q", 100, [], False, web=True)
+    assert "Do not say you cannot check live information" in normal

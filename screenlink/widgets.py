@@ -46,21 +46,22 @@ def apply_style(root, ui=1.0):
 
 
 class Slider(ttk.Frame):
-    def __init__(self, parent, label, lo, hi, value, command=None, fmt="{:.2f}", length=150, integer=False):
+    def __init__(self, parent, label, lo, hi, value, command=None, fmt="{:.2f}", length=150, integer=False,
+                 label_width=14):
         super().__init__(parent)
         self.integer = integer
-        self.fmt = "{:d}" if integer else fmt
+        self.fmt = fmt if callable(fmt) else ("{:d}" if integer else fmt)
         self.command = command
         self.var = tk.DoubleVar(value=value)
-        ttk.Label(self, text=label, width=14).grid(row=0, column=0, sticky="w")
+        ttk.Label(self, text=label, width=label_width).grid(row=0, column=0, sticky="w")
         self.scale = ttk.Scale(self, from_=lo, to=hi, variable=self.var, command=self._changed, length=int(length * UI))
         self.scale.grid(row=0, column=1, padx=6)
-        self.value_label = ttk.Label(self, width=6, style="Muted.TLabel")
+        self.value_label = ttk.Label(self, width=11, style="Muted.TLabel")
         self.value_label.grid(row=0, column=2, sticky="w")
         self._refresh()
 
     def _refresh(self):
-        self.value_label.configure(text=self.fmt.format(self.get()))
+        self.value_label.configure(text=self.fmt(self.get()) if callable(self.fmt) else self.fmt.format(self.get()))
 
     def _changed(self, _value=None):
         self._refresh()

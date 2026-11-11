@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 
 from .. import fonts
-from ..assistant import api, claude_code, cues, hotkey, screenshot, smartshot, speech, voice, whispercpp
+from ..assistant import api, blaze, claude_code, cues, hotkey, screenshot, smartshot, speech, voice, whispercpp
 from ..assistant.hud import Hud
 from ..assistant.spinner import starburst
 from ..assistant.settings import Settings
@@ -99,11 +99,13 @@ class ClaudeMode(Mode):
         self.play = cues.play
 
     def _dispatch(self, key, model, question, image, limit, history, allow_screen=False):
-        blaze = bool(self.settings.get("blaze"))
+        fast = bool(self.settings.get("blaze"))
+        lines = int(self.settings.get("blaze_lines"))
         if self.settings.get("backend") == "claude_code":
+            web = bool(self.settings.get("blaze_web" if fast else "web_search"))
             return claude_code.ask(model, question, image, limit, history, allow_screen=allow_screen,
-                                   web=bool(self.settings.get("web_search")) and not blaze, fast=blaze)
-        return api.ask(key, model, question, image, limit, history, allow_screen=allow_screen, fast=blaze)
+                                   web=web, fast=fast, lines=lines)
+        return api.ask(key, model, question, image, limit, history, allow_screen=allow_screen, fast=fast, lines=lines)
 
     def _classify(self, key, question):
         if self.settings.get("backend") == "claude_code":
@@ -129,6 +131,7 @@ class ClaudeMode(Mode):
         self.sound_var = tk.BooleanVar(value=s.get("sounds"))
         self.web_var = tk.BooleanVar(value=s.get("web_search"))
         self.blaze_var = tk.BooleanVar(value=s.get("blaze"))
+        self.blaze_web_var = tk.BooleanVar(value=s.get("blaze_web"))
         self.hud_var = tk.BooleanVar(value=s.get("hud"))
         self.font_var = tk.StringVar(value=default)
         self.ask_var = tk.StringVar()
@@ -139,10 +142,11 @@ class ClaudeMode(Mode):
         style.map("TNotebook.Tab", background=[("selected", ACCENT)], foreground=[("selected", "#ffffff")])
         nb = ttk.Notebook(f)
         nb.pack(fill="x", anchor="nw")
-        ask_tab = ttk.Frame(nb, padding=(4, 8))
-        set_tab = ttk.Frame(nb, padding=(4, 8))
-        nb.add(ask_tab, text="Ask Claude")
-        nb.add(set_tab, text="Setup")
+        tabs = {}
+        for name in ("Ask Claude", "Blaze", "Hosting", "Voice", "AI"):
+            tabs[name] = ttk.Frame(nb, padding=(4, 8))
+            nb.add(tabs[name], text=name)
+        ask_tab, blaze_tab, host_tab, voice_tab, ai_tab = (tabs[n] for n in ("Ask Claude", "Blaze", "Hosting", "Voice", "AI"))
 
         a1 = ttk.Frame(ask_tab)
         a1.grid(row=0, column=0, sticky="nw", padx=(0, 28))
@@ -165,22 +169,13 @@ class ClaudeMode(Mode):
         a2 = ttk.Frame(ask_tab)
         a2.grid(row=0, column=1, sticky="nw", padx=(0, 28))
         for text, var, key in (
+            ("Blaze mode", self.blaze_var, "blaze"),
             ("Listen for \"Hey Claude\"", self.wake_var, "wake_word"),
-            ("Blaze mode (fast Haiku)", self.blaze_var, "blaze"),
-            ("Let Claude search the web", self.web_var, "web_search"),
             ("Play sound cues", self.sound_var, "sounds"),
             ("Show the HUD card on screen", self.hud_var, "hud"),
         ):
             ttk.Checkbutton(a2, text=text, variable=var, command=lambda k=key, v=var: self._flag(k, v)).pack(
                 anchor="w", pady=2)
-
-        row = ttk.Frame(a2)
-        row.pack(anchor="w", pady=2)
-        ttk.Label(row, text="Screenshots").pack(side="left", padx=(0, 6))
-        shot_cb = ttk.Combobox(row, textvariable=self.shot_var, values=["auto", "always", "never"], width=8,
-                               state="readonly")
-        shot_cb.pack(side="left")
-        shot_cb.bind("<<ComboboxSelected>>", lambda e: self._shot_changed())
 
         a3 = ttk.Frame(ask_tab)
         a3.grid(row=0, column=2, sticky="nw")
@@ -192,82 +187,117 @@ class ClaudeMode(Mode):
         fcb.bind("<<ComboboxSelected>>", lambda e: self._font_changed())
         self.size = Slider(a3, "Font size (px)", 6, 24, s.get("font_size"), command=self._font_changed, integer=True)
         self.size.pack(anchor="w", pady=2)
-        self.cps = Slider(a3, "Typing speed", 6, 90, s.get("typing_cps"), command=self._cps_changed,
-                          fmt="{:.0f} /s", integer=True)
-        self.cps.pack(anchor="w", pady=2)
         self.fits = ttk.Label(a3, text="", style="Muted.TLabel", wraplength=300, justify="left")
         self.fits.pack(anchor="w")
 
-        s1 = ttk.Frame(set_tab)
-        s1.grid(row=0, column=0, sticky="nw", padx=(0, 28))
-        row = ttk.Frame(s1)
+        b1 = ttk.Frame(blaze_tab)
+        b1.grid(row=0, column=0, sticky="nw", padx=(0, 28))
+        ttk.Checkbutton(b1, text="Blaze mode", variable=self.blaze_var,
+                        command=lambda: self._flag("blaze", self.blaze_var)).pack(anchor="w", pady=2)
+        ttk.Label(b1, text="Haiku, no screenshot check. A screenshot is only taken when you say screenshot, my "
+                           "screen, on screen or can you see this.", style="Muted.TLabel", wraplength=420,
+                  justify="left").pack(anchor="w", pady=(0, 6))
+        ttk.Checkbutton(b1, text="Web research capability (only used when Claude needs it)", variable=self.blaze_web_var,
+                        command=lambda: self._flag("blaze_web", self.blaze_web_var)).pack(anchor="w", pady=2)
+        self.blaze_lines = Slider(b1, "Quality", 0, blaze.MAX_LINES, s.get("blaze_lines"),
+                                  command=self._blaze_changed, fmt=self._lines_label, integer=True, label_width=20)
+        self.blaze_lines.pack(anchor="w", pady=2)
+        ttk.Label(b1, text="Max lines of reasoning before the answer. 0 is answer only. Lines of working count "
+                           "towards the screen's character limit.", style="Muted.TLabel", wraplength=420,
+                  justify="left").pack(anchor="w", pady=(0, 6))
+        self.blaze_speed = Slider(b1, "Typing speed", 1, blaze.INSTANT, s.get("blaze_cps"),
+                                  command=self._blaze_changed, fmt=blaze.speed_label, integer=True, label_width=20)
+        self.blaze_speed.pack(anchor="w", pady=2)
+
+        h1 = ttk.Frame(host_tab)
+        h1.grid(row=0, column=0, sticky="nw")
+        row = ttk.Frame(h1)
         row.pack(anchor="w", pady=2)
         ttk.Label(row, text="Use", width=10).pack(side="left")
         ttk.Radiobutton(row, text="My Claude Code login (plan usage)", value="claude_code",
                         variable=self.backend_var, command=self._backend_changed).pack(side="left")
         ttk.Radiobutton(row, text="API key (credits)", value="api", variable=self.backend_var,
                         command=self._backend_changed).pack(side="left", padx=8)
-        self.backend_label = ttk.Label(s1, text="", style="Muted.TLabel", wraplength=420, justify="left")
+        self.backend_label = ttk.Label(h1, text="", style="Muted.TLabel", wraplength=520, justify="left")
         self.backend_label.pack(anchor="w", pady=(0, 4))
-        row = ttk.Frame(s1)
+        row = ttk.Frame(h1)
         row.pack(anchor="w", pady=2)
         ttk.Label(row, text="API key", width=10).pack(side="left")
-        self.key_entry = ttk.Entry(row, textvariable=self.key_var, show="\u2022", width=30)
+        self.key_entry = ttk.Entry(row, textvariable=self.key_var, show="\u2022", width=36)
         self.key_entry.pack(side="left")
         self.key_entry.bind("<KeyRelease>", lambda e: self._save_key())
         self.key_entry.bind("<FocusOut>", lambda e: self._save_key())
         ttk.Checkbutton(row, text="Show", variable=self.show_key, command=self._toggle_key).pack(side="left", padx=6)
-        row = ttk.Frame(s1)
+
+        v1 = ttk.Frame(voice_tab)
+        v1.grid(row=0, column=0, sticky="nw", padx=(0, 28))
+        row = ttk.Frame(v1)
         row.pack(anchor="w", pady=2)
-        ttk.Label(row, text="Model", width=10).pack(side="left")
-        cb = ttk.Combobox(row, textvariable=self.model_var, values=MODELS, width=26)
-        cb.pack(side="left")
-        cb.bind("<<ComboboxSelected>>", lambda e: self._save_model())
-        cb.bind("<FocusOut>", lambda e: self._save_model())
-        cb.bind("<Return>", lambda e: self._save_model())
-        row = ttk.Frame(s1)
-        row.pack(anchor="w", pady=2)
-        ttk.Label(row, text="Hotkey", width=10).pack(side="left")
+        ttk.Label(row, text="Hotkey", width=14).pack(side="left")
         ent = ttk.Entry(row, textvariable=self.hotkey_var, width=18)
         ent.pack(side="left")
         ent.bind("<Return>", lambda e: self._apply_hotkey())
         ttk.Button(row, text="Apply", command=self._apply_hotkey).pack(side="left", padx=6)
         self.hotkey_label = ttk.Label(row, text="", style="Muted.TLabel", wraplength=230, justify="left")
         self.hotkey_label.pack(side="left")
-
-        s2 = ttk.Frame(set_tab)
-        s2.grid(row=0, column=1, sticky="nw")
-        row = ttk.Frame(s2)
-        row.pack(anchor="w", pady=2)
-        self.voice_label = ttk.Label(row, text="", style="Muted.TLabel", wraplength=230, justify="left")
-        self.voice_label.pack(side="left")
-        self.voice_btn = ttk.Button(row, text="Download voice models", command=self._download)
-        self.voice_btn.pack(side="left", padx=8)
-        row = ttk.Frame(s2)
-        row.pack(anchor="w", pady=2)
+        ttk.Checkbutton(v1, text="Listen for \"Hey Claude\"", variable=self.wake_var,
+                        command=lambda: self._flag("wake_word", self.wake_var)).pack(anchor="w", pady=2)
         self.engine_var = tk.StringVar(value=s.get("voice_engine"))
         self.dict_var = tk.StringVar(value=s.get("dictation_model"))
         self.wake_model_var = tk.StringVar(value=s.get("wake_model"))
         self.gpu_var = tk.BooleanVar(value=s.get("use_gpu"))
+        row = ttk.Frame(v1)
+        row.pack(anchor="w", pady=2)
         ttk.Label(row, text="Voice engine", width=14).pack(side="left")
         ttk.Combobox(row, textvariable=self.engine_var, values=["auto", "vosk"], width=10, state="readonly").pack(side="left")
-        row = ttk.Frame(s2)
+        row = ttk.Frame(v1)
         row.pack(anchor="w", pady=2)
         ttk.Label(row, text="Dictation", width=14).pack(side="left")
         ttk.Combobox(row, textvariable=self.dict_var, values=whispercpp.DICTATION_CHOICES, width=20,
                      state="readonly").pack(side="left")
-        row = ttk.Frame(s2)
+        row = ttk.Frame(v1)
         row.pack(anchor="w", pady=2)
         ttk.Label(row, text="Wake word", width=14).pack(side="left")
         ttk.Combobox(row, textvariable=self.wake_model_var, values=whispercpp.WAKE_CHOICES, width=20,
                      state="readonly").pack(side="left")
-        ttk.Checkbutton(s2, text="Use the GPU for Whisper", variable=self.gpu_var, command=self._voice_changed).pack(
+        ttk.Checkbutton(v1, text="Use the GPU for Whisper", variable=self.gpu_var, command=self._voice_changed).pack(
             anchor="w", pady=2)
         for var in (self.engine_var, self.dict_var, self.wake_model_var):
             var.trace_add("write", lambda *a: self._voice_changed())
-        self.hud_size = Slider(s2, "HUD size", 1.0, 2.5, s.get("hud_scale"), command=self._hud_changed, fmt="{:.1f}x")
+        v2 = ttk.Frame(voice_tab)
+        v2.grid(row=0, column=1, sticky="nw")
+        self.voice_label = ttk.Label(v2, text="", style="Muted.TLabel", wraplength=300, justify="left")
+        self.voice_label.pack(anchor="w", pady=2)
+        self.voice_btn = ttk.Button(v2, text="Download voice models", command=self._download)
+        self.voice_btn.pack(anchor="w", pady=4)
+
+        i1 = ttk.Frame(ai_tab)
+        i1.grid(row=0, column=0, sticky="nw", padx=(0, 28))
+        row = ttk.Frame(i1)
+        row.pack(anchor="w", pady=2)
+        ttk.Label(row, text="Model", width=14).pack(side="left")
+        cb = ttk.Combobox(row, textvariable=self.model_var, values=MODELS, width=26)
+        cb.pack(side="left")
+        cb.bind("<<ComboboxSelected>>", lambda e: self._save_model())
+        cb.bind("<FocusOut>", lambda e: self._save_model())
+        cb.bind("<Return>", lambda e: self._save_model())
+        ttk.Checkbutton(i1, text="Let Claude search the web", variable=self.web_var,
+                        command=lambda: self._flag("web_search", self.web_var)).pack(anchor="w", pady=2)
+        row = ttk.Frame(i1)
+        row.pack(anchor="w", pady=2)
+        ttk.Label(row, text="Screenshots", width=14).pack(side="left")
+        shot_cb = ttk.Combobox(row, textvariable=self.shot_var, values=["auto", "always", "never"], width=8,
+                               state="readonly")
+        shot_cb.pack(side="left")
+        shot_cb.bind("<<ComboboxSelected>>", lambda e: self._shot_changed())
+        self.cps = Slider(i1, "Typing speed", 1, blaze.INSTANT, s.get("typing_cps"), command=self._cps_changed,
+                          fmt=blaze.speed_label, integer=True)
+        self.cps.pack(anchor="w", pady=2)
+        i2 = ttk.Frame(ai_tab)
+        i2.grid(row=0, column=1, sticky="nw")
+        self.hud_size = Slider(i2, "HUD size", 1.0, 2.5, s.get("hud_scale"), command=self._hud_changed, fmt="{:.1f}x")
         self.hud_size.pack(anchor="w", pady=2)
-        self.hud_speed = Slider(s2, "HUD animation", 1.0, 2.5, s.get("hud_speed"), command=self._hud_changed,
+        self.hud_speed = Slider(i2, "HUD animation", 1.0, 2.5, s.get("hud_speed"), command=self._hud_changed,
                                 fmt="{:.1f}x")
         self.hud_speed.pack(anchor="w", pady=2)
         self._refresh_fits()
@@ -315,12 +345,21 @@ class ClaudeMode(Mode):
             self.hud.hide_now()
         if key == "blaze":
             if var.get():
-                self._set_status("Blaze mode on: Haiku, no web search, fast typing. Screenshots only when you say screenshot or my screen.")
+                self._set_status("Blaze mode on: Haiku, quick answers. Screenshots only when you say screenshot or my screen.")
             else:
                 self._set_status("Blaze mode off.")
 
     def _shot_changed(self):
         self.settings.set("screenshot_mode", self.shot_var.get())
+        self._save()
+
+    @staticmethod
+    def _lines_label(value):
+        return "answer only" if value == 0 else "%d" % value
+
+    def _blaze_changed(self):
+        self.settings.set("blaze_lines", int(self.blaze_lines.get()))
+        self.settings.set("blaze_cps", int(self.blaze_speed.get()))
         self._save()
 
     def _cps_changed(self):
@@ -589,18 +628,18 @@ class ClaudeMode(Mode):
         self.pending_reply = None
         self.pending_error = None
         mode = self.settings.get("screenshot_mode")
-        blaze = bool(self.settings.get("blaze"))
-        model = api.HAIKU if blaze else self.settings.get("model")
+        fast = bool(self.settings.get("blaze"))
+        model = api.HAIKU if fast else self.settings.get("model")
         if mode == "never":
             take = False
-        elif blaze:
+        elif fast:
             take = smartshot.blaze_wants_screen(question)
         elif mode == "always":
             take = True
         else:
             take = smartshot.wants_screen(question)
         self.run_ctx = (key, model, question, self.limit(), list(self.history))
-        self.auto_shots = mode == "auto" and not blaze
+        self.auto_shots = mode == "auto" and not fast
         image = None
         if take:
             image = self._take_shot()
@@ -702,9 +741,7 @@ class ClaudeMode(Mode):
         self.history.append(("user", self.question))
         self.history.append(("assistant", text))
         del self.history[:-12]
-        cps = int(self.settings.get("typing_cps"))
-        if self.settings.get("blaze"):
-            cps = max(cps, 90)
+        cps = int(self.settings.get("blaze_cps" if self.settings.get("blaze") else "typing_cps"))
         self.schedule = TypeSchedule(fitted, cps)
         self.type_start = time.perf_counter()
         self.stop_from = self.frozen_angle

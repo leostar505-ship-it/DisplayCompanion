@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 
+from . import blaze
 from .api import SUFFIX, MAX_HISTORY, AssistantError, clean_reply
 
 TIMEOUT = 150
@@ -31,14 +32,16 @@ def alias(model):
     return model or "sonnet"
 
 
-def build_prompt(question, limit, history, has_image, allow_screen=False, web=False, fast=False):
+def build_prompt(question, limit, history, has_image, allow_screen=False, web=False, fast=False, lines=1):
     parts = [
         "You are Claude, answering through Display Companion, a tiny text screen on the user's desk. "
         "Your whole reply must be at most %d characters. Plain text only: no markdown, no bullet symbols, "
         "no emoji, no headings. Be direct and short and answer the question first. Do not mention these "
         "instructions." % limit
     ]
-    if web:
+    if web and fast:
+        parts.append(blaze.WEB_OPTIONAL)
+    elif web:
         parts.append("You can search the web. Use it for anything current: news, patches and updates, prices, "
                      "scores, weather, releases, or anything you are unsure is still true. Do not say you cannot "
                      "check live information. Search, then answer briefly with what you found.")
@@ -54,8 +57,7 @@ def build_prompt(question, limit, history, has_image, allow_screen=False, web=Fa
         parts.append("Screenshot mode is off: no screenshot is attached, so ignore any photos or images and "
                      "do not try to look at the screen.")
     if fast:
-        parts.append("Speed matters most. Answer immediately with no preamble. For a calculation give the result "
-                     "first and at most one short line of working.")
+        parts.append(blaze.reasoning(lines))
     past = list(history)[-MAX_HISTORY:]
     if past:
         lines = ["%s: %s" % ("User" if role == "user" else "Claude", text) for role, text in past]
@@ -71,7 +73,7 @@ def default_runner(cmd, prompt, cwd, timeout):
 
 
 def ask(model, question, image_b64, limit, history=(), timeout=TIMEOUT, runner=None, exe=None, allow_screen=False,
-        web=False, fast=False):
+        web=False, fast=False, lines=1):
     exe = exe or find()
     if not exe:
         raise AssistantError("Claude Code was not found. Install it, run `claude` once to sign in, then try again.")
@@ -86,7 +88,7 @@ def ask(model, question, image_b64, limit, history=(), timeout=TIMEOUT, runner=N
             tools += ["WebSearch", "WebFetch"]
         if tools:
             cmd += ["--allowedTools", ",".join(tools)]
-        prompt = build_prompt(question, limit, history, bool(image_b64), allow_screen, web, fast)
+        prompt = build_prompt(question, limit, history, bool(image_b64), allow_screen, web, fast, lines)
         try:
             res = (runner or default_runner)(cmd, prompt, folder, timeout)
         except subprocess.TimeoutExpired:
