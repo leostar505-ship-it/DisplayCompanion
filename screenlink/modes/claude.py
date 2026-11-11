@@ -28,7 +28,6 @@ ICON = 16
 SETTLE = 0.7
 NEUTRAL = 45.0
 CANCEL_TIME = 0.75
-CANCEL_ICON = 36
 CANCEL_FPS = 24
 NOTCH = (ICON + 5, ICON + 4)
 
@@ -719,13 +718,13 @@ class ClaudeMode(Mode):
 
     def _cancel_frame(self, k):
         shrink = (1.0 - k) ** 1.6
-        size = int(CANCEL_ICON * shrink)
-        img = fonts.render_block("Never mind", fonts.load_font(self._font_path(), 12), DIM, BG, valign="bottom")
+        size = int(ICON * shrink)
+        img = fonts.render_block("Never mind", fonts.load_font(self._font_path(), 12), DIM, BG)
         if size >= 2:
             fade = k * k
             colour = tuple(int(a + (b - a) * fade) for a, b in zip(ACCENT_RGB, BG))
             icon = starburst(NEUTRAL - 720.0 * k * k, size, color=colour)
-            img.paste(icon, ((fonts.WIDTH - size) // 2, 48 - size // 2), icon)
+            img.paste(icon, (fonts.WIDTH - ICON - 3 + (ICON - size) // 2, 3 + (ICON - size) // 2), icon)
         self._push(img)
 
     def _fail(self, message):
