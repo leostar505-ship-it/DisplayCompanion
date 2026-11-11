@@ -24,7 +24,12 @@ KINDS = {
     "responding": ("Responding", "Writing your answer"),
     "done": ("Done", "Reply is on your display"),
     "error": ("Error", "Please try again"),
+    "nevermind": ("Never mind", "Nothing was sent"),
 }
+
+NEVERMIND_HOLD = 0.9
+NEVERMIND_FLAT = 1.8
+NEVERMIND_SWAP = 1.6
 
 
 def smooth(t):
@@ -169,6 +174,17 @@ def paint_done(p, t):
         p.mix(lay, 1 - rp)
 
 
+def paint_nevermind(p, t, now):
+    amp = 1.0 - smooth((t - NEVERMIND_HOLD) / NEVERMIND_FLAT)
+    pts = []
+    for i in range(61):
+        px = -14 + i * 0.5
+        env = math.sin(i / 60.0 * math.pi)
+        py = math.sin(px * 0.55 - now * 2 * math.pi) * 5.6 * env * amp
+        pts.append(p.P(px, py))
+    p.stroke(p.d, pts, 3 * p.u, DARK + (255,))
+
+
 def paint_error(p, t):
     lay = p.layer()
     d = ImageDraw.Draw(lay)
@@ -292,6 +308,8 @@ def icon_image(kind, t, now, scale, shot_speed=1.0):
         paint_done(p, t)
     elif kind == "error":
         paint_error(p, t)
+    elif kind == "nevermind":
+        paint_nevermind(p, t, now)
     return p.img.resize((out, out), Image.LANCZOS)
 
 
@@ -339,6 +357,8 @@ class Card:
 
     def render(self, kind, t, now, frac=None, shot_speed=1.0, title=None, sub=None):
         base_title, base_sub = KINDS[kind]
+        if kind == "nevermind" and t < NEVERMIND_SWAP:
+            base_title, base_sub = KINDS["listening"]
         img = self.base.copy().convert("RGBA")
         s = self.scale
         icon = icon_image(kind, t, now, s, shot_speed)

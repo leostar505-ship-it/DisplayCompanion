@@ -196,7 +196,8 @@ mode.events.put(("text", "Never mind"))
 pump(0.3)
 assert mode.phase == "cancelling" and "Cancelled" in mode.status.cget("text"), mode.status.cget("text")
 assert "nevermind" in cues_played, cues_played
-pump(0.9)
+mode.cancel_t0 -= 5.0
+pump(0.3)
 assert mode.phase == "idle", mode.phase
 assert len(asked) == 0
 

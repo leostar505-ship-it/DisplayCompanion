@@ -186,3 +186,13 @@ def test_blaze_reasoning_lines_and_optional_web():
     assert "only when the answer truly depends" in text and "at most 2 short lines" in text
     normal = claude_code.build_prompt("q", 100, [], False, web=True)
     assert "Do not say you cannot check live information" in normal
+
+
+def test_hud_nevermind_card_swaps_title_and_flattens():
+    from screenlink.assistant import hudart
+    card = hudart.Card(1.0)
+    early = card.render("nevermind", 0.2, 0.2)
+    late = card.render("nevermind", 3.0, 3.0)
+    assert early.size == late.size
+    assert early.tobytes() != late.tobytes()
+    assert hudart.KINDS["nevermind"][0] == "Never mind"

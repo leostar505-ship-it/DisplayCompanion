@@ -27,7 +27,9 @@ BAD = (255, 90, 100)
 ICON = 16
 SETTLE = 0.7
 NEUTRAL = 45.0
-CANCEL_TIME = 0.75
+CANCEL_TIME = 4.4
+CANCEL_HOLD = 0.9
+CANCEL_ANIM = 1.8
 CANCEL_FPS = 24
 NOTCH = (ICON + 5, ICON + 4)
 
@@ -538,11 +540,16 @@ class ClaudeMode(Mode):
         if self.display.regions(px565):
             self.display.flush(acked=True)
 
-    def _idle_screen(self):
+    def _idle_screen(self, icon=False):
         if self.phase == "idle" and not self.reply_text:
             hint = "Say \"Hey Claude\"\nor press %s" % self.settings.get("hotkey") if self.wake_var.get() else (
                 "Press %s\nto ask Claude" % self.settings.get("hotkey"))
-            self._push(fonts.render_block(hint, fonts.load_font(self._font_path(), 12), DIM, BG))
+            img = fonts.render_block(hint, fonts.load_font(self._font_path(), 12), DIM, BG,
+                                     notch=NOTCH if icon else None)
+            if icon:
+                mark = starburst(NEUTRAL, ICON)
+                img.paste(mark, (fonts.WIDTH - ICON - 3, 3), mark)
+            self._push(img)
 
     def _board_spin(self, caption):
         self.board_caption = caption
@@ -705,21 +712,21 @@ class ClaudeMode(Mode):
     def _cancel(self):
         self.pending_reply = None
         self.pending_error = None
-        if self.hud is not None:
-            self.hud.hide_now()
+        self._hud("nevermind", CANCEL_TIME)
         self._cue("nevermind")
         self._set_status("Cancelled. Nothing was sent.")
         self.reply_text = ""
         self.phase = "cancelling"
         self.cancel_t0 = time.perf_counter()
         self.cancel_bucket = -1
+        self.cancel_final = False
         if self.listener is not None:
             self.listener.pause(False)
 
     def _cancel_frame(self, k):
+        img = fonts.render_block("Never mind", fonts.load_font(self._font_path(), 14), DIM, BG)
         shrink = (1.0 - k) ** 1.6
         size = int(ICON * shrink)
-        img = fonts.render_block("Never mind", fonts.load_font(self._font_path(), 14), DIM, BG)
         if size >= 2:
             fade = k * k
             colour = tuple(int(a + (b - a) * fade) for a, b in zip(ACCENT_RGB, BG))
@@ -867,12 +874,15 @@ class ClaudeMode(Mode):
             elapsed = now - self.cancel_t0
             if elapsed >= CANCEL_TIME:
                 self.phase = "idle"
-                self._idle_screen()
-            else:
+                self._idle_screen(True)
+            elif elapsed < CANCEL_HOLD + CANCEL_ANIM:
                 bucket = int(elapsed * CANCEL_FPS)
                 if bucket != self.cancel_bucket:
                     self.cancel_bucket = bucket
-                    self._cancel_frame(elapsed / CANCEL_TIME)
+                    self._cancel_frame(max(0.0, (elapsed - CANCEL_HOLD) / CANCEL_ANIM))
+            elif not self.cancel_final:
+                self.cancel_final = True
+                self._cancel_frame(1.0)
         elif self.phase == "listening" and now - self.listen_since > LISTEN_GIVE_UP:
             self._fail("I didn't hear anything.")
 
