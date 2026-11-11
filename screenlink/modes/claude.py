@@ -823,7 +823,15 @@ class ClaudeMode(Mode):
                     elif event[1]:
                         self.submit(event[1])
                     else:
-                        self._fail("I didn't catch that.")
+                        reason = getattr(self.listener, "reason", "")
+                        if reason == "silence":
+                            self._fail("I didn't hear anything. Is the mic too quiet?")
+                        elif reason.startswith("engine"):
+                            self._fail("I didn't catch that. The voice engine failed: %s" % reason[8:])
+                        elif reason == "empty":
+                            self._fail("I didn't catch that. I heard sound but no words.")
+                        else:
+                            self._fail("I didn't catch that.")
             elif kind == "need_screen":
                 if self.phase in ("shot", "thinking"):
                     image = self._take_shot()

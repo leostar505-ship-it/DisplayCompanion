@@ -108,6 +108,7 @@ class Listener:
         self.mode = "wake"
         self.paused = False
         self.dictate_requested = False
+        self.reason = ""
         self.lock = threading.Lock()
 
     def start(self):
@@ -242,6 +243,14 @@ class WhisperListener(Listener):
         super().__init__(on_wake, on_text, on_status, wake_enabled=wake_enabled, source=source)
         self.engine = engine
 
+    def _warm(self, engine):
+        def load():
+            try:
+                engine.preload_dictation()
+            except Exception:
+                pass
+        threading.Thread(target=load, daemon=True).start()
+
     def _run(self):
         from .whispercpp import Segmenter, WhisperError
         engine = self.engine
@@ -256,7 +265,7 @@ class WhisperListener(Listener):
             self.on_status("Voice engine problem: %s" % exc)
             return
         wake_seg = Segmenter(end_quiet=3, min_voiced=2, max_chunks=20)
-        talk_seg = Segmenter(end_quiet=4, min_voiced=2, max_chunks=int(MAX_DICTATION / 0.25))
+        talk_seg = Segmenter(end_quiet=4, min_voiced=1, max_chunks=int(MAX_DICTATION / 0.25), floor=120.0)
         started = 0.0
         deaf_until = 0.0
         last_maintain = 0.0
@@ -275,6 +284,8 @@ class WhisperListener(Listener):
                     if self.dictate_requested:
                         self.dictate_requested = False
                         self.mode = "dictate"
+                        self.reason = ""
+                        self._warm(engine)
                         talk_seg.reset()
                         started = now
                         deaf_until = now + DEAF_AFTER_WAKE
@@ -293,9 +304,12 @@ class WhisperListener(Listener):
                         rest = after_wake(normalise(text))
                         self.on_wake()
                         if len(rest.split()) >= 3 or is_cancel(rest):
+                            self.reason = ""
                             self.on_text(rest)
                             continue
                         self.mode = "dictate"
+                        self.reason = ""
+                        self._warm(engine)
                         talk_seg.reset()
                         started = time.monotonic()
                         deaf_until = started + DEAF_AFTER_WAKE
@@ -304,6 +318,7 @@ class WhisperListener(Listener):
                 if seg is None:
                     if not talk_seg.active and now - started > LISTEN_TIMEOUT:
                         self.mode = "wake"
+                        self.reason = "silence"
                         wake_seg.reset()
                         self.on_text("")
                     continue
@@ -311,7 +326,10 @@ class WhisperListener(Listener):
                     final = engine.dictate(seg)
                 except WhisperError as exc:
                     self.on_status("Voice engine problem: %s" % exc)
+                    self.reason = "engine: %s" % exc
                     final = ""
+                else:
+                    self.reason = "" if final else "empty"
                 self.mode = "wake"
                 wake_seg.reset()
                 self.on_text(final)

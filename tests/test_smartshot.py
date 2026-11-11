@@ -142,3 +142,10 @@ def test_neutral_icon_is_an_x_not_a_plus():
     assert diagonal >= straight * 1.3
     diagonal, straight = measure(0.0)
     assert straight >= diagonal * 1.3
+
+
+def test_voice_failure_messages_map_to_codes():
+    from screenlink.modes.claude import error_info
+    assert error_info("I didn't hear anything. Is the mic too quiet?")[0] == "E2"
+    assert error_info("I didn't catch that. I heard sound but no words.")[0] == "E3"
+    assert error_info("I didn't catch that. The voice engine failed: x")[0] == "E3"
