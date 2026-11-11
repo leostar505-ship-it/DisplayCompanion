@@ -25,6 +25,16 @@ PATTERNS = [
 ]
 COMPILED = [re.compile(p, re.I) for p in PATTERNS]
 
+BLAZE_PATTERNS = [
+    r"\bscreen\s?shots?\b",
+    r"\b(my|the|this)\s+(screen|monitor|display)\b",
+    r"\bon\s+(my\s+|the\s+)?screen\b",
+    r"\b(look|looking)\s+at\s+(this|that|my|the)\b",
+    r"\bcan you see\b|\bdo you see\b|\bwhat do you see\b",
+    r"\bwhat('s| is)\s+(this|that)\b",
+]
+BLAZE_COMPILED = [re.compile(p, re.I) for p in BLAZE_PATTERNS]
+
 CANCEL = (
     "never mind", "nevermind", "never mind that", "cancel", "cancel that", "forget it", "forget that",
     "scratch that", "ignore that", "stop", "abort", "no thanks", "nope", "oops", "my bad",
@@ -34,6 +44,11 @@ CANCEL = (
 def wants_screen(question):
     text = " ".join(str(question).lower().split())
     return any(p.search(text) for p in COMPILED)
+
+
+def blaze_wants_screen(question):
+    text = " ".join(str(question).lower().split())
+    return any(p.search(text) for p in BLAZE_COMPILED)
 
 
 def is_cancel(text):

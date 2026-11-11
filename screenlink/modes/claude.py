@@ -99,10 +99,11 @@ class ClaudeMode(Mode):
         self.play = cues.play
 
     def _dispatch(self, key, model, question, image, limit, history, allow_screen=False):
+        blaze = bool(self.settings.get("blaze"))
         if self.settings.get("backend") == "claude_code":
             return claude_code.ask(model, question, image, limit, history, allow_screen=allow_screen,
-                                   web=bool(self.settings.get("web_search")))
-        return api.ask(key, model, question, image, limit, history, allow_screen=allow_screen)
+                                   web=bool(self.settings.get("web_search")) and not blaze, fast=blaze)
+        return api.ask(key, model, question, image, limit, history, allow_screen=allow_screen, fast=blaze)
 
     def _classify(self, key, question):
         if self.settings.get("backend") == "claude_code":
@@ -127,6 +128,7 @@ class ClaudeMode(Mode):
         self.shot_var = tk.StringVar(value=s.get("screenshot_mode"))
         self.sound_var = tk.BooleanVar(value=s.get("sounds"))
         self.web_var = tk.BooleanVar(value=s.get("web_search"))
+        self.blaze_var = tk.BooleanVar(value=s.get("blaze"))
         self.hud_var = tk.BooleanVar(value=s.get("hud"))
         self.font_var = tk.StringVar(value=default)
         self.ask_var = tk.StringVar()
@@ -164,6 +166,7 @@ class ClaudeMode(Mode):
         a2.grid(row=0, column=1, sticky="nw", padx=(0, 28))
         for text, var, key in (
             ("Listen for \"Hey Claude\"", self.wake_var, "wake_word"),
+            ("Blaze mode (fast Haiku)", self.blaze_var, "blaze"),
             ("Let Claude search the web", self.web_var, "web_search"),
             ("Play sound cues", self.sound_var, "sounds"),
             ("Show the HUD card on screen", self.hud_var, "hud"),
@@ -310,6 +313,11 @@ class ClaudeMode(Mode):
             self._restart_listener()
         if key == "hud" and not var.get() and self.hud is not None:
             self.hud.hide_now()
+        if key == "blaze":
+            if var.get():
+                self._set_status("Blaze mode on: Haiku, no web search, fast typing. Screenshots only when you say screenshot or my screen.")
+            else:
+                self._set_status("Blaze mode off.")
 
     def _shot_changed(self):
         self.settings.set("screenshot_mode", self.shot_var.get())
@@ -581,14 +589,18 @@ class ClaudeMode(Mode):
         self.pending_reply = None
         self.pending_error = None
         mode = self.settings.get("screenshot_mode")
-        if mode == "always":
-            take = True
-        elif mode == "never":
+        blaze = bool(self.settings.get("blaze"))
+        model = api.HAIKU if blaze else self.settings.get("model")
+        if mode == "never":
             take = False
+        elif blaze:
+            take = smartshot.blaze_wants_screen(question)
+        elif mode == "always":
+            take = True
         else:
             take = smartshot.wants_screen(question)
-        self.run_ctx = (key, self.settings.get("model"), question, self.limit(), list(self.history))
-        self.auto_shots = mode == "auto"
+        self.run_ctx = (key, model, question, self.limit(), list(self.history))
+        self.auto_shots = mode == "auto" and not blaze
         image = None
         if take:
             image = self._take_shot()
@@ -690,7 +702,10 @@ class ClaudeMode(Mode):
         self.history.append(("user", self.question))
         self.history.append(("assistant", text))
         del self.history[:-12]
-        self.schedule = TypeSchedule(fitted, self.settings.get("typing_cps"))
+        cps = int(self.settings.get("typing_cps"))
+        if self.settings.get("blaze"):
+            cps = max(cps, 90)
+        self.schedule = TypeSchedule(fitted, cps)
         self.type_start = time.perf_counter()
         self.stop_from = self.frozen_angle
         self.stop_to = self._neutral_after(self.frozen_angle)

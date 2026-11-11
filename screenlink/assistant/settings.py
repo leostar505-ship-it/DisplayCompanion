@@ -11,6 +11,7 @@ DEFAULTS = {
     "screenshot_mode": "auto",
     "sounds": True,
     "web_search": True,
+    "blaze": False,
     "hud": True,
     "hud_scale": 1.5,
     "hud_speed": 1.6,

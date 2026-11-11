@@ -149,3 +149,20 @@ def test_voice_failure_messages_map_to_codes():
     assert error_info("I didn't hear anything. Is the mic too quiet?")[0] == "E2"
     assert error_info("I didn't catch that. I heard sound but no words.")[0] == "E3"
     assert error_info("I didn't catch that. The voice engine failed: x")[0] == "E3"
+
+
+def test_blaze_screen_keywords_are_strict():
+    from screenlink.assistant import smartshot
+    assert smartshot.blaze_wants_screen("take a screenshot")
+    assert smartshot.blaze_wants_screen("what's on my screen")
+    assert smartshot.blaze_wants_screen("can you see this")
+    assert not smartshot.blaze_wants_screen("i'm playing cs2, how much damage does an ak do")
+    assert not smartshot.blaze_wants_screen("27 times 4 plus 90")
+    assert not smartshot.blaze_wants_screen("what is the price of a case")
+
+
+def test_fast_prompts_ask_for_speed():
+    from screenlink.assistant import api, claude_code
+    assert "Speed matters" in claude_code.build_prompt("2+2", 100, [], False, fast=True)
+    assert "Speed matters" not in claude_code.build_prompt("2+2", 100, [], False)
+    assert "Speed matters" in api.system_prompt(100, False, False, True)

@@ -156,6 +156,41 @@ asked.clear()
 mode.phase = "idle"
 pump(0.2)
 
+blaze_seen = []
+blaze_classified = []
+
+
+def fake_blaze(key, model, q, image, limit, history, allow_screen=False):
+    blaze_seen.append((model, image is not None, allow_screen))
+    return "42."
+
+
+mode.ask = fake_blaze
+mode.classify = lambda key, q: (blaze_classified.append(q), True)[1]
+mode.settings.set("blaze", True)
+mode.settings.set("screenshot_mode", "auto")
+mode.phase = "idle"
+mode.ask_var.set("how much damage is 27 times 4 headshots")
+mode._ask_typed()
+deadline = time.time() + 25
+while time.time() < deadline and not (blaze_seen and mode.phase == "idle"):
+    pump(0.05)
+assert blaze_seen == [("claude-haiku-5-5", False, False)], blaze_seen
+assert not blaze_classified
+blaze_seen.clear()
+mode.phase = "idle"
+mode.ask_var.set("take a screenshot and read the price")
+mode._ask_typed()
+deadline = time.time() + 25
+while time.time() < deadline and not (blaze_seen and mode.phase == "idle"):
+    pump(0.05)
+assert blaze_seen == [("claude-haiku-5-5", True, False)], blaze_seen
+mode.settings.set("blaze", False)
+mode.ask = fake_ask
+mode.classify = lambda key, q: True
+mode.phase = "idle"
+pump(0.2)
+
 mode.phase = "listening"
 mode.events.put(("text", "Never mind"))
 pump(0.3)
