@@ -194,7 +194,10 @@ pump(0.2)
 mode.phase = "listening"
 mode.events.put(("text", "Never mind"))
 pump(0.3)
-assert mode.phase == "idle" and "Cancelled" in mode.status.cget("text"), mode.status.cget("text")
+assert mode.phase == "cancelling" and "Cancelled" in mode.status.cget("text"), mode.status.cget("text")
+assert "nevermind" in cues_played, cues_played
+pump(0.9)
+assert mode.phase == "idle", mode.phase
 assert len(asked) == 0
 
 s.set("api_key", "")

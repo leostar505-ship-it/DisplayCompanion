@@ -10,7 +10,7 @@ from PIL import Image
 from .. import fonts
 from ..assistant import api, blaze, claude_code, cues, hotkey, screenshot, smartshot, speech, voice, whispercpp
 from ..assistant.hud import Hud
-from ..assistant.spinner import starburst
+from ..assistant.spinner import ACCENT as ACCENT_RGB, starburst
 from ..assistant.settings import Settings
 from ..assistant.typer import TypeSchedule, capacity, fit_reply
 from ..widgets import ACCENT, FIELD, PANEL, TEXT, Slider
@@ -27,6 +27,9 @@ BAD = (255, 90, 100)
 ICON = 16
 SETTLE = 0.7
 NEUTRAL = 45.0
+CANCEL_TIME = 0.75
+CANCEL_ICON = 36
+CANCEL_FPS = 24
 NOTCH = (ICON + 5, ICON + 4)
 
 ERROR_CODES = (
@@ -701,16 +704,29 @@ class ClaudeMode(Mode):
         threading.Thread(target=work, daemon=True).start()
 
     def _cancel(self):
-        self.phase = "idle"
         self.pending_reply = None
         self.pending_error = None
         if self.hud is not None:
             self.hud.hide_now()
+        self._cue("nevermind")
         self._set_status("Cancelled. Nothing was sent.")
         self.reply_text = ""
-        self._idle_screen()
+        self.phase = "cancelling"
+        self.cancel_t0 = time.perf_counter()
+        self.cancel_bucket = -1
         if self.listener is not None:
             self.listener.pause(False)
+
+    def _cancel_frame(self, k):
+        shrink = (1.0 - k) ** 1.6
+        size = int(CANCEL_ICON * shrink)
+        img = fonts.render_block("Never mind", fonts.load_font(self._font_path(), 12), DIM, BG, valign="bottom")
+        if size >= 2:
+            fade = k * k
+            colour = tuple(int(a + (b - a) * fade) for a, b in zip(ACCENT_RGB, BG))
+            icon = starburst(NEUTRAL - 720.0 * k * k, size, color=colour)
+            img.paste(icon, ((fonts.WIDTH - size) // 2, 48 - size // 2), icon)
+        self._push(img)
 
     def _fail(self, message):
         self.phase = "idle"
@@ -848,6 +864,16 @@ class ClaudeMode(Mode):
                 self._cue("done")
                 self._hud("done", 3.2)
                 self._set_status("Done. Press %s to ask again." % self.settings.get("hotkey"))
+        elif self.phase == "cancelling":
+            elapsed = now - self.cancel_t0
+            if elapsed >= CANCEL_TIME:
+                self.phase = "idle"
+                self._idle_screen()
+            else:
+                bucket = int(elapsed * CANCEL_FPS)
+                if bucket != self.cancel_bucket:
+                    self.cancel_bucket = bucket
+                    self._cancel_frame(elapsed / CANCEL_TIME)
         elif self.phase == "listening" and now - self.listen_since > LISTEN_GIVE_UP:
             self._fail("I didn't hear anything.")
 
