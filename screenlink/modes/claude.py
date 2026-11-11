@@ -27,10 +27,8 @@ BAD = (255, 90, 100)
 ICON = 16
 SETTLE = 0.7
 NEUTRAL = 45.0
-CANCEL_TIME = 0.9
+CANCEL_TIME = 0.75
 CANCEL_FPS = 24
-CANCEL_ICON = 36
-CANCEL_GLIDE = 0.3
 NOTCH = (ICON + 5, ICON + 4)
 
 ERROR_CODES = (
@@ -719,18 +717,14 @@ class ClaudeMode(Mode):
             self.listener.pause(False)
 
     def _cancel_frame(self, k):
-        glide = min(1.0, k / CANCEL_GLIDE)
-        glide = 1.0 - (1.0 - glide) ** 3
-        j = max(0.0, (k - CANCEL_GLIDE) / (1.0 - CANCEL_GLIDE))
-        size = int((ICON + (CANCEL_ICON - ICON) * glide) * (1.0 - j) ** 1.6)
-        img = fonts.render_block("Never mind", fonts.load_font(self._font_path(), 12), DIM, BG, valign="bottom")
+        shrink = (1.0 - k) ** 1.6
+        size = int(ICON * shrink)
+        img = fonts.render_block("Never mind", fonts.load_font(self._font_path(), 14), DIM, BG)
         if size >= 2:
-            fade = j * j
+            fade = k * k
             colour = tuple(int(a + (b - a) * fade) for a, b in zip(ACCENT_RGB, BG))
             icon = starburst(NEUTRAL - 720.0 * k * k, size, color=colour)
-            cx = (fonts.WIDTH - ICON // 2 - 3) + (fonts.WIDTH / 2 - (fonts.WIDTH - ICON // 2 - 3)) * glide
-            cy = (3 + ICON // 2) + (48 - (3 + ICON // 2)) * glide
-            img.paste(icon, (int(cx - size / 2), int(cy - size / 2)), icon)
+            img.paste(icon, (fonts.WIDTH - ICON - 3 + (ICON - size) // 2, 3 + (ICON - size) // 2), icon)
         self._push(img)
 
     def _fail(self, message):
