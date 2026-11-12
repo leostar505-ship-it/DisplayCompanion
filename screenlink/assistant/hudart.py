@@ -198,23 +198,6 @@ def paint_error(p, t):
         sc = 1.0 if dp >= 1 else (1.3 * smooth(dp / 0.6) if dp < 0.6 else 1.3 - 0.3 * smooth((dp - 0.6) / 0.4))
         x, y = p.P(0, 11.5)
         p.dot(d, x, y, 3.6 * p.u * sc, DARK + (255,))
-    er = smooth((t - 2.5) / 1.0)
-    if er > 0:
-        edge = p.cy + (-18 + 40 * er) * p.u
-        fade = 9 * p.u
-        alpha = lay.getchannel("A")
-        px = alpha.load()
-        for y in range(p.size):
-            if y > edge + p.u:
-                continue
-            keep = 0.0 if y <= edge - fade else min(1.0, max(0.0, (y - (edge - fade)) / (fade + p.u)))
-            if keep >= 1.0:
-                continue
-            for x in range(p.size):
-                v = px[x, y]
-                if v:
-                    px[x, y] = int(v * keep)
-        lay.putalpha(alpha)
     p.img.alpha_composite(lay)
 
 
