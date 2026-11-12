@@ -30,7 +30,7 @@ def test_no_screen(q):
     assert not smartshot.wants_screen(q)
 
 
-@pytest.mark.parametrize("t", ["Never mind.", "nevermind", "cancel", "Forget it!", "hey claude never mind", "scratch that", "Um, never mind.", "oh nevermind", "no no never mind", "never mind never mind", "what's three times seven never mind", "hey claude, uh, forget it", "Never mind, forget it."])
+@pytest.mark.parametrize("t", ["Never mind.", "nevermind", "cancel", "Forget it!", "hey claude never mind", "scratch that", "Um, never mind.", "oh nevermind", "no no never mind", "never mind never mind", "what's three times seven never mind", "hey claude, uh, forget it", "Never mind, forget it.", "never mind never mind never mind never mind never mind"])
 def test_cancel(t):
     assert smartshot.is_cancel(t)
 
@@ -191,6 +191,8 @@ def test_blaze_reasoning_lines_and_optional_web():
 def test_hud_nevermind_card_swaps_title_and_flattens():
     from screenlink.assistant import hudart
     card = hudart.Card(1.0)
+    first = card.render("nevermind", 0.0, 0.0)
+    assert first.tobytes() != card.render("listening", 0.0, 0.0).tobytes()
     early = card.render("nevermind", 0.2, 0.2)
     late = card.render("nevermind", 3.0, 3.0)
     assert early.size == late.size

@@ -72,7 +72,7 @@ def _strip_fillers(words):
 def is_cancel(text):
     cleaned = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in str(text).lower())
     cleaned = " ".join(cleaned.split())
-    if not cleaned or len(cleaned.split()) > 8:
+    if not cleaned:
         return False
     for lead in LEADS:
         if cleaned.startswith(lead + " ") or cleaned == lead:
@@ -85,9 +85,6 @@ def is_cancel(text):
     squashed = phrase.replace(" ", "")
     if phrase in CANCEL or squashed in {c.replace(" ", "") for c in CANCEL}:
         return True
-    for c in CANCEL_PHRASES + ["nevermind"]:
-        if phrase.endswith(" " + c):
-            return True
     rest = phrase
     changed = True
     while rest and changed:
@@ -98,7 +95,11 @@ def is_cancel(text):
                 changed = True
                 break
         rest = " ".join(_strip_fillers(rest.split()))
-    return not rest
+    if not rest:
+        return True
+    if len(words) > 8:
+        return False
+    return any(phrase.endswith(" " + c) for c in CANCEL_PHRASES + ["nevermind"])
 
 
 def wants_more(reply):
