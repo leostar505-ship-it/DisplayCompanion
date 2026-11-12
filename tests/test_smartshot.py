@@ -30,12 +30,12 @@ def test_no_screen(q):
     assert not smartshot.wants_screen(q)
 
 
-@pytest.mark.parametrize("t", ["Never mind.", "nevermind", "cancel", "Forget it!", "hey claude never mind", "scratch that"])
+@pytest.mark.parametrize("t", ["Never mind.", "nevermind", "cancel", "Forget it!", "hey claude never mind", "scratch that", "Um, never mind.", "oh nevermind", "no no never mind", "never mind never mind", "what's three times seven never mind", "hey claude, uh, forget it", "Never mind, forget it."])
 def test_cancel(t):
     assert smartshot.is_cancel(t)
 
 
-@pytest.mark.parametrize("t", ["never mind the weather what's the time", "what is the plan", "", "stop the clock at noon please"])
+@pytest.mark.parametrize("t", ["never mind the weather what's the time", "what is the plan", "", "stop the clock at noon please", "what does never mind mean", "never mind the weather what's the time", "cancel my subscription to netflix"])
 def test_not_cancel(t):
     assert not smartshot.is_cancel(t)
 

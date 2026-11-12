@@ -51,17 +51,54 @@ def blaze_wants_screen(question):
     return any(p.search(text) for p in BLAZE_COMPILED)
 
 
+FILLERS = {
+    "um", "uh", "uhh", "umm", "er", "erm", "hmm", "hm", "oh", "ah", "ok", "okay", "yeah", "yep", "so", "just",
+    "actually", "wait", "sorry", "please", "no", "well",
+}
+LEADS = ("hey claude", "okay claude", "ok claude", "hi claude", "claude")
+CANCEL_PHRASES = sorted({c for c in CANCEL if " " in c} | {"never mind", "forget it", "scratch that"}, key=len, reverse=True)
+CANCEL_SINGLE = {"nevermind", "cancel", "stop", "abort", "nope", "oops"}
+
+
+def _strip_fillers(words):
+    out = list(words)
+    while out and out[0] in FILLERS:
+        out.pop(0)
+    while out and out[-1] in FILLERS:
+        out.pop()
+    return out
+
+
 def is_cancel(text):
     cleaned = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in str(text).lower())
-    words = cleaned.split()
-    if not words or len(words) > 5:
+    cleaned = " ".join(cleaned.split())
+    if not cleaned or len(cleaned.split()) > 8:
         return False
-    for lead in ("hey claude", "okay claude", "ok claude", "hi claude", "claude"):
-        if cleaned.strip().startswith(lead):
-            words = cleaned.strip()[len(lead):].split()
+    for lead in LEADS:
+        if cleaned.startswith(lead + " ") or cleaned == lead:
+            cleaned = cleaned[len(lead):].strip()
             break
+    words = _strip_fillers(cleaned.split())
+    if not words:
+        return False
     phrase = " ".join(words)
-    return phrase in CANCEL or phrase.replace(" ", "") in {c.replace(" ", "") for c in CANCEL}
+    squashed = phrase.replace(" ", "")
+    if phrase in CANCEL or squashed in {c.replace(" ", "") for c in CANCEL}:
+        return True
+    for c in CANCEL_PHRASES + ["nevermind"]:
+        if phrase.endswith(" " + c):
+            return True
+    rest = phrase
+    changed = True
+    while rest and changed:
+        changed = False
+        for c in CANCEL_PHRASES + sorted(CANCEL_SINGLE):
+            if rest == c or rest.startswith(c + " "):
+                rest = rest[len(c):].strip()
+                changed = True
+                break
+        rest = " ".join(_strip_fillers(rest.split()))
+    return not rest
 
 
 def wants_more(reply):
